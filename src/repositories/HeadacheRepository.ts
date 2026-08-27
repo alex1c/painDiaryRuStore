@@ -13,6 +13,12 @@ import type {
 import { StorageError } from '@/src/domain/errors';
 import type {
   CodeLabelInput,
+  EpisodeDetails,
+  EpisodeDetailsInput,
+  EpisodeFactor,
+  EpisodeLocation,
+  EpisodePainCharacter,
+  EpisodeSymptom,
   HeadacheEpisode,
   HeadacheEpisodeInput,
   PainIntensityEntry,
@@ -426,12 +432,213 @@ export class HeadacheRepository {
     return this.listIntensityEntries(episodeId);
   }
 
+  /**
+   * Full episode details aggregate for UI screens.
+   * Returns null if the episode does not exist.
+   */
+  getEpisodeDetails(episodeId: string): EpisodeDetails | null {
+    const episode = this.getEpisodeById(episodeId);
+    if (!episode) {
+      return null;
+    }
+
+    return {
+      episode,
+      intensities: this.getIntensityEntries(episodeId),
+      latestIntensity: this.getLatestIntensityEntry(episodeId),
+      maxIntensity: this.getMaxIntensity(episodeId),
+      locations: this.listLocations(episodeId),
+      painCharacters: this.listPainCharacters(episodeId),
+      symptoms: this.listSymptoms(episodeId),
+      factors: this.listFactors(episodeId),
+    };
+  }
+
+  /** True when side or any detail tag set is non-empty. */
+  hasPainDetails(episodeId: string): boolean {
+    const details = this.getEpisodeDetails(episodeId);
+    if (!details) return false;
+    return (
+      details.episode.side != null ||
+      details.locations.length > 0 ||
+      details.painCharacters.length > 0 ||
+      details.symptoms.length > 0 ||
+      details.factors.length > 0
+    );
+  }
+
+  /**
+   * Atomically replaces side + all detail tag sets.
+   * Empty arrays clear previous values. Partial mid-failure rolls back.
+   */
+  replaceEpisodeDetails(
+    episodeId: string,
+    input: EpisodeDetailsInput
+  ): EpisodeDetails {
+    const existing = this.getEpisodeById(episodeId);
+    if (!existing) {
+      throw new StorageError(`Episode not found: ${episodeId}`);
+    }
+
+    const side = input.side !== undefined ? input.side : existing.side;
+    // Undefined means "leave unchanged"; empty array means "clear".
+    const locations =
+      input.locations !== undefined
+        ? input.locations
+        : this.listLocations(episodeId).map((row) => ({
+            code: row.code,
+            customLabel: row.customLabel,
+          }));
+    const painCharacters =
+      input.painCharacters !== undefined
+        ? input.painCharacters
+        : this.listPainCharacters(episodeId).map((row) => ({
+            code: row.code,
+            customLabel: row.customLabel,
+          }));
+    const symptoms =
+      input.symptoms !== undefined
+        ? input.symptoms
+        : this.listSymptoms(episodeId).map((row) => ({
+            code: row.code,
+            customLabel: row.customLabel,
+          }));
+    const factors =
+      input.factors !== undefined
+        ? input.factors
+        : this.listFactors(episodeId).map((row) => ({
+            code: row.code,
+            customLabel: row.customLabel,
+            customFactorId: row.customFactorId,
+          }));
+
+    // Deduplicate by code (+ customFactorId for customs) before write.
+    const uniqueLocations = dedupeCodeLabels(locations);
+    const uniqueCharacters = dedupeCodeLabels(painCharacters);
+    const uniqueSymptoms = dedupeCodeLabels(symptoms);
+    const uniqueFactors = dedupeFactors(factors);
+
+    for (const f of uniqueFactors) {
+      if (f.code === 'custom' && !f.customFactorId) {
+        throw new DomainValidationError(
+          'Custom factor rows require customFactorId',
+          'factors'
+        );
+      }
+    }
+
+    const updatedAt = nowIsoUtc();
+
+    try {
+      this.db.withTransaction(() => {
+        this.db.run(
+          `UPDATE headache_episodes SET side = ?, updated_at = ? WHERE id = ?`,
+          [side, updatedAt, episodeId]
+        );
+
+        this.replaceCodeSetInner('episode_locations', episodeId, uniqueLocations);
+        this.replaceCodeSetInner(
+          'episode_pain_characters',
+          episodeId,
+          uniqueCharacters
+        );
+        this.replaceCodeSetInner('episode_symptoms', episodeId, uniqueSymptoms);
+        this.replaceFactorsInner(episodeId, uniqueFactors);
+      });
+    } catch (err) {
+      if (err instanceof DomainValidationError || err instanceof StorageError) {
+        throw err;
+      }
+      throw new StorageError(
+        `Failed to replace details for episode ${episodeId}`,
+        err
+      );
+    }
+
+    const details = this.getEpisodeDetails(episodeId);
+    if (!details) {
+      throw new StorageError(`Episode missing after details save: ${episodeId}`);
+    }
+    return details;
+  }
+
+  listLocations(episodeId: string): EpisodeLocation[] {
+    return this.db
+      .getAll<TagRow>(
+        `SELECT * FROM episode_locations WHERE episode_id = ? ORDER BY code ASC`,
+        [episodeId]
+      )
+      .map((row) => ({
+        id: row.id,
+        episodeId: row.episode_id,
+        code: row.code as LocationCode,
+        customLabel: row.custom_label,
+      }));
+  }
+
+  listPainCharacters(episodeId: string): EpisodePainCharacter[] {
+    return this.db
+      .getAll<TagRow>(
+        `SELECT * FROM episode_pain_characters WHERE episode_id = ? ORDER BY code ASC`,
+        [episodeId]
+      )
+      .map((row) => ({
+        id: row.id,
+        episodeId: row.episode_id,
+        code: row.code as PainCharacterCode,
+        customLabel: row.custom_label,
+      }));
+  }
+
+  listSymptoms(episodeId: string): EpisodeSymptom[] {
+    return this.db
+      .getAll<TagRow>(
+        `SELECT * FROM episode_symptoms WHERE episode_id = ? ORDER BY code ASC`,
+        [episodeId]
+      )
+      .map((row) => ({
+        id: row.id,
+        episodeId: row.episode_id,
+        code: row.code as SymptomCode,
+        customLabel: row.custom_label,
+      }));
+  }
+
+  listFactors(episodeId: string): EpisodeFactor[] {
+    return this.db
+      .getAll<FactorRow>(
+        `SELECT * FROM episode_factors WHERE episode_id = ? ORDER BY code ASC, id ASC`,
+        [episodeId]
+      )
+      .map((row) => ({
+        id: row.id,
+        episodeId: row.episode_id,
+        code: row.code as FactorCode,
+        customLabel: row.custom_label,
+        customFactorId: row.custom_factor_id ?? null,
+      }));
+  }
+
   /** Replaces all location tags for an episode inside a transaction. */
   setLocations(
     episodeId: string,
     items: CodeLabelInput<LocationCode>[]
   ): void {
-    this.replaceCodeSet('episode_locations', episodeId, items);
+    if (!this.getEpisodeById(episodeId)) {
+      throw new StorageError(`Episode not found: ${episodeId}`);
+    }
+    try {
+      this.db.withTransaction(() => {
+        this.replaceCodeSetInner(
+          'episode_locations',
+          episodeId,
+          dedupeCodeLabels(items)
+        );
+      });
+    } catch (err) {
+      if (err instanceof StorageError) throw err;
+      throw new StorageError('Failed to replace locations', err);
+    }
   }
 
   /** Replaces all pain-character tags for an episode. */
@@ -439,7 +646,21 @@ export class HeadacheRepository {
     episodeId: string,
     items: CodeLabelInput<PainCharacterCode>[]
   ): void {
-    this.replaceCodeSet('episode_pain_characters', episodeId, items);
+    if (!this.getEpisodeById(episodeId)) {
+      throw new StorageError(`Episode not found: ${episodeId}`);
+    }
+    try {
+      this.db.withTransaction(() => {
+        this.replaceCodeSetInner(
+          'episode_pain_characters',
+          episodeId,
+          dedupeCodeLabels(items)
+        );
+      });
+    } catch (err) {
+      if (err instanceof StorageError) throw err;
+      throw new StorageError('Failed to replace pain characters', err);
+    }
   }
 
   /** Replaces all symptom tags for an episode. */
@@ -447,50 +668,139 @@ export class HeadacheRepository {
     episodeId: string,
     items: CodeLabelInput<SymptomCode>[]
   ): void {
-    this.replaceCodeSet('episode_symptoms', episodeId, items);
+    if (!this.getEpisodeById(episodeId)) {
+      throw new StorageError(`Episode not found: ${episodeId}`);
+    }
+    try {
+      this.db.withTransaction(() => {
+        this.replaceCodeSetInner(
+          'episode_symptoms',
+          episodeId,
+          dedupeCodeLabels(items)
+        );
+      });
+    } catch (err) {
+      if (err instanceof StorageError) throw err;
+      throw new StorageError('Failed to replace symptoms', err);
+    }
   }
 
   /** Replaces all factor (possible trigger) tags for an episode. */
   setFactors(
     episodeId: string,
-    items: CodeLabelInput<FactorCode>[]
-  ): void {
-    this.replaceCodeSet('episode_factors', episodeId, items);
-  }
-
-  /**
-   * Delete-all-then-insert pattern for code tag tables.
-   * Runs in a transaction so partial writes never leave an empty set on failure.
-   */
-  private replaceCodeSet(
-    table:
-      | 'episode_locations'
-      | 'episode_pain_characters'
-      | 'episode_symptoms'
-      | 'episode_factors',
-    episodeId: string,
-    items: CodeLabelInput<string>[]
+    items: {
+      code: FactorCode;
+      customLabel?: string | null;
+      customFactorId?: string | null;
+    }[]
   ): void {
     if (!this.getEpisodeById(episodeId)) {
       throw new StorageError(`Episode not found: ${episodeId}`);
     }
-
     try {
       this.db.withTransaction(() => {
-        this.db.run(`DELETE FROM ${table} WHERE episode_id = ?`, [episodeId]);
-        for (const item of items) {
-          this.db.run(
-            `INSERT INTO ${table} (id, episode_id, code, custom_label)
-             VALUES (?, ?, ?, ?)`,
-            [createId(), episodeId, item.code, item.customLabel ?? null]
-          );
-        }
+        this.replaceFactorsInner(episodeId, dedupeFactors(items));
       });
     } catch (err) {
       if (err instanceof StorageError) throw err;
-      throw new StorageError(`Failed to replace set on ${table}`, err);
+      throw new StorageError('Failed to replace factors', err);
     }
   }
+
+  /** Delete-all-then-insert for simple code tables (caller must be in a transaction). */
+  private replaceCodeSetInner(
+    table:
+      | 'episode_locations'
+      | 'episode_pain_characters'
+      | 'episode_symptoms',
+    episodeId: string,
+    items: CodeLabelInput<string>[]
+  ): void {
+    this.db.run(`DELETE FROM ${table} WHERE episode_id = ?`, [episodeId]);
+    for (const item of items) {
+      this.db.run(
+        `INSERT INTO ${table} (id, episode_id, code, custom_label)
+         VALUES (?, ?, ?, ?)`,
+        [createId(), episodeId, item.code, item.customLabel ?? null]
+      );
+    }
+  }
+
+  /** Delete-all-then-insert for episode_factors including custom_factor_id. */
+  private replaceFactorsInner(
+    episodeId: string,
+    items: {
+      code: FactorCode;
+      customLabel?: string | null;
+      customFactorId?: string | null;
+    }[]
+  ): void {
+    this.db.run(`DELETE FROM episode_factors WHERE episode_id = ?`, [episodeId]);
+    for (const item of items) {
+      this.db.run(
+        `INSERT INTO episode_factors
+          (id, episode_id, code, custom_label, custom_factor_id)
+         VALUES (?, ?, ?, ?, ?)`,
+        [
+          createId(),
+          episodeId,
+          item.code,
+          item.customLabel ?? null,
+          item.customFactorId ?? null,
+        ]
+      );
+    }
+  }
+}
+
+type TagRow = {
+  id: string;
+  episode_id: string;
+  code: string;
+  custom_label: string | null;
+};
+
+type FactorRow = TagRow & {
+  custom_factor_id: string | null;
+};
+
+function dedupeCodeLabels<T extends string>(
+  items: CodeLabelInput<T>[]
+): CodeLabelInput<T>[] {
+  const seen = new Set<string>();
+  const out: CodeLabelInput<T>[] = [];
+  for (const item of items) {
+    const key = `${item.code}::${item.customLabel ?? ''}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(item);
+  }
+  return out;
+}
+
+function dedupeFactors(
+  items: {
+    code: FactorCode;
+    customLabel?: string | null;
+    customFactorId?: string | null;
+  }[]
+): {
+  code: FactorCode;
+  customLabel?: string | null;
+  customFactorId?: string | null;
+}[] {
+  const seen = new Set<string>();
+  const out: typeof items = [];
+  for (const item of items) {
+    const key =
+      item.code === 'custom'
+        ? `custom::${item.customFactorId ?? ''}`
+        : item.code;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(item);
+  }
+  return out;
 }
 
 function mapEpisode(row: EpisodeRow): HeadacheEpisode {

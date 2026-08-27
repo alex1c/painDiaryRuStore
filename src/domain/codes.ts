@@ -1,64 +1,72 @@
 /**
  * Domain code enums / union types for controlled vocabularies.
- * Codes are stored as TEXT in SQLite; custom_label holds free-text when code is "other".
+ * Persisted keys are stable English snake_case; UI labels live in labels.ts.
+ * custom_label / custom factors hold free-text when needed.
  */
 
-/** Which side of the head is primarily affected during an episode. */
-export type HeadacheSide = 'left' | 'right' | 'both' | 'unspecified';
+/** Side of the head (single-select on an episode). */
+export type HeadacheSide = 'left' | 'right' | 'bilateral' | 'whole_head';
 
-/** Anatomical / region location codes for headache. */
+/** Anatomical region location codes (multi-select). */
 export type LocationCode =
   | 'forehead'
   | 'temple'
   | 'eye'
-  | 'crown'
-  | 'occiput'
+  | 'back_of_head'
+  | 'top_of_head'
   | 'neck'
-  | 'face'
-  | 'whole_head'
   | 'other';
 
-/** Qualitative character of the pain sensation. */
+/** Qualitative character of the pain sensation (multi-select). */
 export type PainCharacterCode =
   | 'throbbing'
-  | 'pressing'
+  | 'pressure'
+  | 'bursting'
+  | 'pounding'
   | 'stabbing'
   | 'burning'
-  | 'dull'
-  | 'pulsating'
+  | 'shooting'
   | 'other';
 
-/** Accompanying symptom codes (not the pain itself). */
+/** Accompanying symptom codes (multi-select; observation only, not diagnosis). */
 export type SymptomCode =
   | 'nausea'
   | 'vomiting'
   | 'photophobia'
   | 'phonophobia'
-  | 'aura'
+  | 'smell_sensitivity'
   | 'dizziness'
-  | 'fatigue'
-  | 'blurred_vision'
-  | 'neck_stiffness'
+  | 'visual_disturbance'
+  | 'weakness'
+  | 'numbness'
+  | 'aura'
   | 'other';
 
 /**
- * Possible trigger / contributing factor codes.
- * Named "factor" intentionally — these are NOT confirmed medical causes.
+ * Built-in possible trigger / factor codes.
+ * Named "factor" intentionally — NOT confirmed medical causes.
+ * `custom` marks a reusable user-defined factor (see custom_factors table).
  */
 export type FactorCode =
   | 'stress'
-  | 'lack_of_sleep'
-  | 'weather'
+  | 'poor_sleep'
+  | 'oversleep'
+  | 'skipped_meal'
+  | 'dehydration'
   | 'alcohol'
   | 'caffeine'
-  | 'skipped_meal'
+  | 'caffeine_withdrawal'
   | 'screen_time'
-  | 'menstruation'
+  | 'bright_light'
+  | 'noise'
+  | 'smell'
+  | 'heat'
   | 'physical_activity'
-  | 'odor'
-  | 'other';
+  | 'weather_change'
+  | 'menstrual_cycle'
+  | 'custom';
 
-/** User-rated effect of a medication intake on the headache. */
+/** User-rated effect of a medication intake (Phase 1 foundation; UI later). */
 export type MedicationEffect =
   | 'helped_a_lot'
   | 'helped_somewhat'
@@ -66,33 +74,31 @@ export type MedicationEffect =
   | 'made_worse'
   | 'too_early_to_tell';
 
-/** All valid headache side values (runtime guard lists). */
 export const HEADACHE_SIDES: readonly HeadacheSide[] = [
   'left',
   'right',
-  'both',
-  'unspecified',
+  'bilateral',
+  'whole_head',
 ] as const;
 
 export const LOCATION_CODES: readonly LocationCode[] = [
   'forehead',
   'temple',
   'eye',
-  'crown',
-  'occiput',
+  'back_of_head',
+  'top_of_head',
   'neck',
-  'face',
-  'whole_head',
   'other',
 ] as const;
 
 export const PAIN_CHARACTER_CODES: readonly PainCharacterCode[] = [
   'throbbing',
-  'pressing',
+  'pressure',
+  'bursting',
+  'pounding',
   'stabbing',
   'burning',
-  'dull',
-  'pulsating',
+  'shooting',
   'other',
 ] as const;
 
@@ -101,26 +107,38 @@ export const SYMPTOM_CODES: readonly SymptomCode[] = [
   'vomiting',
   'photophobia',
   'phonophobia',
-  'aura',
+  'smell_sensitivity',
   'dizziness',
-  'fatigue',
-  'blurred_vision',
-  'neck_stiffness',
+  'visual_disturbance',
+  'weakness',
+  'numbness',
+  'aura',
   'other',
 ] as const;
 
-export const FACTOR_CODES: readonly FactorCode[] = [
+/** Built-in factors shown in UI (excludes `custom`, which is user-defined). */
+export const BUILT_IN_FACTOR_CODES: readonly Exclude<FactorCode, 'custom'>[] = [
   'stress',
-  'lack_of_sleep',
-  'weather',
+  'poor_sleep',
+  'oversleep',
+  'skipped_meal',
+  'dehydration',
   'alcohol',
   'caffeine',
-  'skipped_meal',
+  'caffeine_withdrawal',
   'screen_time',
-  'menstruation',
+  'bright_light',
+  'noise',
+  'smell',
+  'heat',
   'physical_activity',
-  'odor',
-  'other',
+  'weather_change',
+  'menstrual_cycle',
+] as const;
+
+export const FACTOR_CODES: readonly FactorCode[] = [
+  ...BUILT_IN_FACTOR_CODES,
+  'custom',
 ] as const;
 
 export const MEDICATION_EFFECTS: readonly MedicationEffect[] = [
@@ -129,4 +147,31 @@ export const MEDICATION_EFFECTS: readonly MedicationEffect[] = [
   'no_effect',
   'made_worse',
   'too_early_to_tell',
+] as const;
+
+/** UI-only grouping for factor chips (not persisted). */
+export const FACTOR_UI_GROUPS: readonly {
+  title: string;
+  codes: readonly Exclude<FactorCode, 'custom'>[];
+}[] = [
+  {
+    title: 'Режим',
+    codes: ['poor_sleep', 'oversleep', 'skipped_meal', 'dehydration'],
+  },
+  {
+    title: 'Нагрузка',
+    codes: ['stress', 'screen_time', 'physical_activity'],
+  },
+  {
+    title: 'Окружение',
+    codes: ['bright_light', 'noise', 'smell', 'heat', 'weather_change'],
+  },
+  {
+    title: 'Еда и напитки',
+    codes: ['alcohol', 'caffeine', 'caffeine_withdrawal'],
+  },
+  {
+    title: 'Другое',
+    codes: ['menstrual_cycle'],
+  },
 ] as const;

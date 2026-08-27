@@ -71,7 +71,52 @@ export interface EpisodeFactor {
   episodeId: string;
   code: FactorCode;
   customLabel: string | null;
+  /** Set when code is `custom` and points at custom_factors.id. */
+  customFactorId: string | null;
 }
+
+/** Reusable user-defined possible factor (archive instead of hard delete). */
+export interface CustomFactor {
+  id: string;
+  name: string;
+  /** Case-insensitive / trimmed key used to prevent obvious duplicates. */
+  normalizedName: string;
+  isArchived: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Input for replacing episode detail tag sets. */
+export type EpisodeDetailsInput = {
+  side?: HeadacheSide | null;
+  locations?: CodeLabelInput<LocationCode>[];
+  painCharacters?: CodeLabelInput<PainCharacterCode>[];
+  symptoms?: CodeLabelInput<SymptomCode>[];
+  /**
+   * Built-in: { code: 'stress' }
+   * Custom: { code: 'custom', customFactorId, customLabel? }
+   */
+  factors?: {
+    code: FactorCode;
+    customLabel?: string | null;
+    customFactorId?: string | null;
+  }[];
+};
+
+/**
+ * Aggregate read model for episode details screens.
+ * Assembled by HeadacheRepository.getEpisodeDetails — UI must not run raw SQL.
+ */
+export type EpisodeDetails = {
+  episode: HeadacheEpisode;
+  intensities: PainIntensityEntry[];
+  latestIntensity: PainIntensityEntry | null;
+  maxIntensity: number | null;
+  locations: EpisodeLocation[];
+  painCharacters: EpisodePainCharacter[];
+  symptoms: EpisodeSymptom[];
+  factors: EpisodeFactor[];
+};
 
 /** User-defined medication catalog entry. */
 export interface Medication {

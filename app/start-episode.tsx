@@ -28,8 +28,22 @@ export default function StartEpisodeScreen() {
     if (!headacheRepository || saving) return;
     setSaving(true);
     try {
-      headacheRepository.startEpisode({ intensity, startedAt });
-      router.back();
+      const { episode } = headacheRepository.startEpisode({
+        intensity,
+        startedAt,
+      });
+      Alert.alert('Приступ начат', undefined, [
+        {
+          text: 'Готово',
+          onPress: () => router.back(),
+        },
+        {
+          text: 'Добавить подробности',
+          onPress: () => {
+            router.replace(`/episode-details/${episode.id}`);
+          },
+        },
+      ]);
     } catch (err) {
       const message =
         err instanceof DomainValidationError

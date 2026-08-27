@@ -17,8 +17,15 @@ import { DateTimeField } from '@/components/episode/DateTimeField';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Screen } from '@/components/ui/Screen';
-import type { HeadacheEpisode, PainIntensityEntry } from '@/src/domain/types';
+import type { EpisodeDetails, HeadacheEpisode, PainIntensityEntry } from '@/src/domain/types';
 import { DomainValidationError } from '@/src/domain/validation';
+import {
+  LOCATION_LABELS,
+  PAIN_CHARACTER_LABELS,
+  SIDE_LABELS,
+  SYMPTOM_LABELS,
+  factorDisplayLabel,
+} from '@/src/domain/labels';
 import { useDatabase } from '@/src/providers/DatabaseProvider';
 import { colors, radii, spacing, typography } from '@/src/theme/tokens';
 import { formatDurationBetween } from '@/src/utils/formatDuration';
@@ -31,6 +38,7 @@ export default function EpisodeDetailsScreen() {
   const { headacheRepository } = useDatabase();
 
   const [episode, setEpisode] = useState<HeadacheEpisode | null>(null);
+  const [details, setDetails] = useState<EpisodeDetails | null>(null);
   const [entries, setEntries] = useState<PainIntensityEntry[]>([]);
   const [startedAt, setStartedAt] = useState('');
   const [endedAt, setEndedAt] = useState<string | null>(null);
@@ -40,18 +48,20 @@ export default function EpisodeDetailsScreen() {
 
   const reload = useCallback(() => {
     if (!headacheRepository || !id) return;
-    const found = headacheRepository.getEpisodeById(id);
+    const found = headacheRepository.getEpisodeDetails(id);
     if (!found) {
       setMissing(true);
       setEpisode(null);
+      setDetails(null);
       return;
     }
     setMissing(false);
-    setEpisode(found);
-    setStartedAt(found.startedAt);
-    setEndedAt(found.endedAt);
-    setNotes(found.notes ?? '');
-    setEntries(headacheRepository.getIntensityEntries(id));
+    setDetails(found);
+    setEpisode(found.episode);
+    setStartedAt(found.episode.startedAt);
+    setEndedAt(found.episode.endedAt);
+    setNotes(found.episode.notes ?? '');
+    setEntries(found.intensities);
   }, [headacheRepository, id]);
 
   useFocusEffect(
@@ -132,9 +142,91 @@ export default function EpisodeDetailsScreen() {
         {isActive ? 'Активный приступ' : 'Приступ'}
       </Text>
       <Text style={styles.meta}>
-        Длительность:{' '}
-        {formatDurationBetween(startedAt, endedAt)}
+        Длительность: {formatDurationBetween(startedAt, endedAt)}
+        {details?.maxIntensity != null
+          ? ` · Макс. ${formatIntensityScore(details.maxIntensity)}`
+          : ''}
+        {details?.latestIntensity != null
+          ? ` · Сейчас ${formatIntensityScore(details.latestIntensity.intensity)}`
+          : ''}
       </Text>
+
+      <Button
+        title="Изменить подробности"
+        variant="secondary"
+        onPress={() => router.push(`/episode-details/${id}`)}
+        style={styles.gap}
+      />
+
+      {details && details.episode.side ? (
+        <>
+          <Text style={styles.section}>Где болит</Text>
+          <Text style={styles.body}>
+            {[
+              SIDE_LABELS[details.episode.side],
+              ...details.locations.map((l) =>
+                l.code === 'other' && l.customLabel
+                  ? l.customLabel
+                  : LOCATION_LABELS[l.code]
+              ),
+            ].join(' • ')}
+          </Text>
+        </>
+      ) : details && details.locations.length > 0 ? (
+        <>
+          <Text style={styles.section}>Где болит</Text>
+          <Text style={styles.body}>
+            {details.locations
+              .map((l) =>
+                l.code === 'other' && l.customLabel
+                  ? l.customLabel
+                  : LOCATION_LABELS[l.code]
+              )
+              .join(' • ')}
+          </Text>
+        </>
+      ) : null}
+
+      {details && details.painCharacters.length > 0 ? (
+        <>
+          <Text style={styles.section}>Как болит</Text>
+          <Text style={styles.body}>
+            {details.painCharacters
+              .map((c) =>
+                c.code === 'other' && c.customLabel
+                  ? c.customLabel
+                  : PAIN_CHARACTER_LABELS[c.code]
+              )
+              .join(' • ')}
+          </Text>
+        </>
+      ) : null}
+
+      {details && details.symptoms.length > 0 ? (
+        <>
+          <Text style={styles.section}>Симптомы</Text>
+          <Text style={styles.body}>
+            {details.symptoms
+              .map((s) =>
+                s.code === 'other' && s.customLabel
+                  ? s.customLabel
+                  : SYMPTOM_LABELS[s.code]
+              )
+              .join(' • ')}
+          </Text>
+        </>
+      ) : null}
+
+      {details && details.factors.length > 0 ? (
+        <>
+          <Text style={styles.section}>Что могло повлиять</Text>
+          <Text style={styles.body}>
+            {details.factors
+              .map((f) => factorDisplayLabel(f.code, f.customLabel))
+              .join(' • ')}
+          </Text>
+        </>
+      ) : null}
 
       <View style={styles.block}>
         <DateTimeField
@@ -227,7 +319,12 @@ const styles = StyleSheet.create({
   meta: {
     ...typography.body,
     color: colors.textSecondary,
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
+  },
+  body: {
+    ...typography.body,
+    color: colors.text,
+    marginBottom: spacing.sm,
   },
   block: {
     marginBottom: spacing.md,

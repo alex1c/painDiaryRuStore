@@ -1,5 +1,5 @@
 /**
- * More / settings tab — Phase 1 placeholder.
+ * More / settings tab — local-first note and static safety disclaimer.
  */
 
 import { StyleSheet, Text } from 'react-native';
@@ -17,6 +17,11 @@ export default function MoreScreen() {
         <Text style={styles.body}>
           Тема, напоминания и экспорт данных будут здесь. Данные хранятся только
           на устройстве (локальный SQLite).
+        </Text>
+      </Card>
+      <Card style={styles.card}>
+        <Text style={styles.body}>
+          Приложение не ставит диагноз и не заменяет консультацию врача.
         </Text>
       </Card>
     </Screen>

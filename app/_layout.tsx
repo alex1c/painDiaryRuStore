@@ -70,6 +70,10 @@ function RootLayoutNav() {
             name="episode/[id]"
             options={{ title: 'Приступ' }}
           />
+          <Stack.Screen
+            name="episode-details/[id]"
+            options={{ title: 'Подробности' }}
+          />
         </Stack>
       </ThemeProvider>
     </DatabaseProvider>

@@ -28,6 +28,7 @@ import {
 } from '@/src/utils/formatTime';
 import { formatIntensityScore } from '@/src/utils/intensityLabel';
 import { toLocalDateString } from '@/src/utils/localDate';
+import { buildDetailsSummaryLines } from '@/src/utils/detailsSummary';
 
 type TodayRow = {
   episode: HeadacheEpisode;
@@ -41,6 +42,8 @@ type LoadState =
       status: 'ready';
       active: HeadacheEpisode | null;
       latestIntensity: number | null;
+      hasDetails: boolean;
+      summaryLines: string[];
       completed: TodayRow[];
       tick: number;
     };
@@ -61,6 +64,10 @@ export default function TodayScreen() {
         active != null
           ? headacheRepository.getLatestIntensityEntry(active.id)
           : null;
+      const details =
+        active != null
+          ? headacheRepository.getEpisodeDetails(active.id)
+          : null;
       const localDate = toLocalDateString(new Date());
       const completedEpisodes =
         headacheRepository.getCompletedEpisodesForLocalDate(localDate);
@@ -73,6 +80,9 @@ export default function TodayScreen() {
         status: 'ready',
         active,
         latestIntensity: latest?.intensity ?? null,
+        hasDetails:
+          active != null && headacheRepository.hasPainDetails(active.id),
+        summaryLines: details ? buildDetailsSummaryLines(details) : [],
         completed,
         tick: Date.now(),
       });
@@ -140,7 +150,8 @@ export default function TodayScreen() {
     );
   }
 
-  const { active, latestIntensity, completed, tick } = state;
+  const { active, latestIntensity, hasDetails, summaryLines, completed, tick } =
+    state;
 
   return (
     <Screen scroll>
@@ -173,6 +184,12 @@ export default function TodayScreen() {
               : formatIntensityScore(latestIntensity)}
           </Text>
 
+          {summaryLines.map((line) => (
+            <Text key={line} style={styles.summaryLine}>
+              {line}
+            </Text>
+          ))}
+
           <View style={styles.actions}>
             <Button
               title="Изменить интенсивность"
@@ -192,6 +209,13 @@ export default function TodayScreen() {
                   params: { episodeId: active.id },
                 })
               }
+            />
+            <Button
+              title={
+                hasDetails ? 'Изменить подробности' : 'Добавить подробности'
+              }
+              variant="ghost"
+              onPress={() => router.push(`/episode-details/${active.id}`)}
             />
             <Button
               title="Подробнее / Изменить"
@@ -271,10 +295,16 @@ const styles = StyleSheet.create({
     ...typography.subtitle,
     color: colors.text,
     marginTop: spacing.sm,
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  summaryLine: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginBottom: spacing.xs,
   },
   actions: {
     gap: spacing.sm,
+    marginTop: spacing.sm,
   },
   sectionTitle: {
     ...typography.subtitle,
