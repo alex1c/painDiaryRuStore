@@ -54,6 +54,22 @@ function RootLayoutNav() {
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
         <Stack>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen
+            name="start-episode"
+            options={{ presentation: 'modal', title: 'Новый приступ' }}
+          />
+          <Stack.Screen
+            name="change-intensity"
+            options={{ presentation: 'modal', title: 'Интенсивность' }}
+          />
+          <Stack.Screen
+            name="finish-episode"
+            options={{ presentation: 'modal', title: 'Завершить' }}
+          />
+          <Stack.Screen
+            name="episode/[id]"
+            options={{ title: 'Приступ' }}
+          />
         </Stack>
       </ThemeProvider>
     </DatabaseProvider>

@@ -1,6 +1,6 @@
 /**
  * Repository for headache episodes, intensity entries, and episode tag sets.
- * All writes validate domain rules before touching SQLite.
+ * Phase 2 adds atomic startEpisode, one-active-episode guard, and local-day queries.
  */
 
 import type {
@@ -18,11 +18,15 @@ import type {
   PainIntensityEntry,
 } from '@/src/domain/types';
 import {
+  DomainValidationError,
   validateEpisodeTimes,
   validateIntensity,
+  validateLocalDate,
+  validateNotInFuture,
 } from '@/src/domain/validation';
 import type { SqlDatabase } from '@/src/db/types';
 import { createId } from '@/src/utils/id';
+import { addDaysToLocalDate, parseLocalDate } from '@/src/utils/localDate';
 import { nowIsoUtc } from '@/src/utils/timestamps';
 
 /** Raw SQLite row shape for headache_episodes. */
@@ -45,12 +49,103 @@ type IntensityRow = {
   created_at: string;
 };
 
+/** Result of startEpisode — episode + mandatory first intensity entry. */
+export type StartEpisodeResult = {
+  episode: HeadacheEpisode;
+  intensity: PainIntensityEntry;
+};
+
+/** Options when adding intensity; duplicate same value is skipped by default. */
+export type AddIntensityOptions = {
+  /**
+   * When true, insert even if intensity equals the latest entry.
+   * Useful if the user explicitly changed recordedAt.
+   */
+  force?: boolean;
+};
+
 export class HeadacheRepository {
   constructor(private readonly db: SqlDatabase) {}
 
-  /** Inserts a new episode; returns the persisted domain entity. */
+  /**
+   * Atomically creates an active episode and its first intensity entry.
+   * Rejects when another active episode already exists (v1: one at a time).
+   */
+  startEpisode(input: {
+    intensity: number;
+    startedAt?: string;
+  }): StartEpisodeResult {
+    validateIntensity(input.intensity);
+
+    const startedAt = input.startedAt ?? nowIsoUtc();
+    validateEpisodeTimes(startedAt, null);
+    validateNotInFuture(startedAt, 'startedAt');
+
+    if (this.countActiveEpisodes() > 0) {
+      throw new DomainValidationError(
+        'An active headache episode already exists',
+        'activeEpisode'
+      );
+    }
+
+    const episodeId = createId();
+    const intensityId = createId();
+    const now = nowIsoUtc();
+
+    try {
+      this.db.withTransaction(() => {
+        this.db.run(
+          `INSERT INTO headache_episodes
+            (id, started_at, ended_at, side, notes, created_at, updated_at)
+           VALUES (?, ?, NULL, NULL, NULL, ?, ?)`,
+          [episodeId, startedAt, now, now]
+        );
+
+        this.db.run(
+          `INSERT INTO pain_intensity_entries
+            (id, episode_id, recorded_at, intensity, created_at)
+           VALUES (?, ?, ?, ?, ?)`,
+          [intensityId, episodeId, startedAt, input.intensity, now]
+        );
+      });
+    } catch (err) {
+      if (err instanceof DomainValidationError) throw err;
+      throw new StorageError('Failed to start headache episode', err);
+    }
+
+    return {
+      episode: {
+        id: episodeId,
+        startedAt,
+        endedAt: null,
+        side: null,
+        notes: null,
+        createdAt: now,
+        updatedAt: now,
+      },
+      intensity: {
+        id: intensityId,
+        episodeId,
+        recordedAt: startedAt,
+        intensity: input.intensity,
+        createdAt: now,
+      },
+    };
+  }
+
+  /** Inserts a new episode without intensity (legacy/tests); prefer startEpisode. */
   createEpisode(input: HeadacheEpisodeInput): HeadacheEpisode {
     validateEpisodeTimes(input.startedAt, input.endedAt ?? null);
+    if (input.endedAt == null) {
+      validateNotInFuture(input.startedAt, 'startedAt');
+      // Same one-active rule as startEpisode — protect non-UI callers too.
+      if (this.countActiveEpisodes() > 0) {
+        throw new DomainValidationError(
+          'An active headache episode already exists',
+          'activeEpisode'
+        );
+      }
+    }
 
     const id = createId();
     const now = nowIsoUtc();
@@ -91,16 +186,33 @@ export class HeadacheRepository {
 
   /**
    * Returns the currently active episode (ended_at IS NULL), if any.
-   * If multiple exist (data anomaly), returns the most recently started.
+   * If multiple exist (data anomaly), returns the most recently started
+   * and logs a warning in development — does not delete user data.
    */
   getActiveEpisode(): HeadacheEpisode | null {
+    const activeCount = this.countActiveEpisodes();
+    if (activeCount > 1 && typeof __DEV__ !== 'undefined' && __DEV__) {
+      // Deterministic recovery: newest started_at wins; keep all rows.
+      console.warn(
+        `[HeadacheRepository] Data anomaly: ${activeCount} active episodes; using newest`
+      );
+    }
+
     const row = this.db.getFirst<EpisodeRow>(
       `SELECT * FROM headache_episodes
        WHERE ended_at IS NULL
-       ORDER BY started_at DESC
+       ORDER BY started_at DESC, created_at DESC, id DESC
        LIMIT 1`
     );
     return row ? mapEpisode(row) : null;
+  }
+
+  /** Counts episodes with ended_at IS NULL. */
+  countActiveEpisodes(): number {
+    const row = this.db.getFirst<{ c: number }>(
+      `SELECT COUNT(*) AS c FROM headache_episodes WHERE ended_at IS NULL`
+    );
+    return row?.c ?? 0;
   }
 
   /** Lists episodes ordered by started_at descending. */
@@ -110,6 +222,29 @@ export class HeadacheRepository {
        ORDER BY started_at DESC
        LIMIT ?`,
       [limit]
+    );
+    return rows.map(mapEpisode);
+  }
+
+  /**
+   * Completed episodes whose startedAt falls on the given local calendar day.
+   * Cross-midnight episodes belong to the local date of startedAt (not end).
+   */
+  getCompletedEpisodesForLocalDate(localDate: string): HeadacheEpisode[] {
+    validateLocalDate(localDate);
+
+    const dayStart = parseLocalDate(localDate);
+    const dayEnd = parseLocalDate(addDaysToLocalDate(localDate, 1));
+    const startIso = dayStart.toISOString();
+    const endIso = dayEnd.toISOString();
+
+    const rows = this.db.getAll<EpisodeRow>(
+      `SELECT * FROM headache_episodes
+       WHERE ended_at IS NOT NULL
+         AND started_at >= ?
+         AND started_at < ?
+       ORDER BY started_at DESC`,
+      [startIso, endIso]
     );
     return rows.map(mapEpisode);
   }
@@ -132,6 +267,9 @@ export class HeadacheRepository {
       patch.notes !== undefined ? patch.notes ?? null : existing.notes;
 
     validateEpisodeTimes(startedAt, endedAt);
+    if (endedAt == null) {
+      validateNotInFuture(startedAt, 'startedAt');
+    }
 
     const updatedAt = nowIsoUtc();
     try {
@@ -155,9 +293,29 @@ export class HeadacheRepository {
     };
   }
 
-  /** Marks an episode as ended at the given ISO timestamp (default: now). */
-  endEpisode(id: string, endedAt: string = nowIsoUtc()): HeadacheEpisode {
+  /**
+   * Finishes an active episode by setting endedAt.
+   * Rejects if already finished or endedAt < startedAt.
+   */
+  finishEpisode(id: string, endedAt: string = nowIsoUtc()): HeadacheEpisode {
+    const existing = this.getEpisodeById(id);
+    if (!existing) {
+      throw new StorageError(`Episode not found: ${id}`);
+    }
+    if (existing.endedAt != null) {
+      throw new DomainValidationError(
+        'Episode is already finished',
+        'endedAt'
+      );
+    }
+
+    validateNotInFuture(endedAt, 'endedAt');
     return this.updateEpisode(id, { endedAt });
+  }
+
+  /** Marks an episode as ended (alias kept for Phase 1 callers/tests). */
+  endEpisode(id: string, endedAt: string = nowIsoUtc()): HeadacheEpisode {
+    return this.finishEpisode(id, endedAt);
   }
 
   /** Deletes an episode; CASCADE removes intensities and tag rows. */
@@ -175,16 +333,32 @@ export class HeadacheRepository {
     }
   }
 
-  /** Adds a pain intensity reading for an episode. */
+  /**
+   * Adds a pain intensity reading.
+   * Skips insert when intensity equals the latest entry (unless force / different time intent).
+   * Returns null when skipped as a no-op duplicate.
+   */
   addIntensityEntry(
     episodeId: string,
     intensity: number,
-    recordedAt: string = nowIsoUtc()
-  ): PainIntensityEntry {
+    recordedAt: string = nowIsoUtc(),
+    options: AddIntensityOptions = {}
+  ): PainIntensityEntry | null {
     validateIntensity(intensity);
+    validateNotInFuture(recordedAt, 'recordedAt');
 
     if (!this.getEpisodeById(episodeId)) {
       throw new StorageError(`Episode not found: ${episodeId}`);
+    }
+
+    const latest = this.getLatestIntensityEntry(episodeId);
+    if (
+      !options.force &&
+      latest != null &&
+      latest.intensity === intensity
+    ) {
+      // Same intensity as last reading — avoid meaningless duplicate rows.
+      return null;
     }
 
     const id = createId();
@@ -210,15 +384,46 @@ export class HeadacheRepository {
     };
   }
 
-  /** Lists intensity entries for an episode, oldest first. */
+  /**
+   * Latest intensity for an episode.
+   * Deterministic order: recorded_at DESC, created_at DESC, id DESC.
+   */
+  getLatestIntensityEntry(episodeId: string): PainIntensityEntry | null {
+    const row = this.db.getFirst<IntensityRow>(
+      `SELECT * FROM pain_intensity_entries
+       WHERE episode_id = ?
+       ORDER BY recorded_at DESC, created_at DESC, id DESC
+       LIMIT 1`,
+      [episodeId]
+    );
+    return row ? mapIntensity(row) : null;
+  }
+
+  /** Maximum intensity recorded for an episode (for Today history cards). */
+  getMaxIntensity(episodeId: string): number | null {
+    const row = this.db.getFirst<{ max_intensity: number | null }>(
+      `SELECT MAX(intensity) AS max_intensity
+       FROM pain_intensity_entries
+       WHERE episode_id = ?`,
+      [episodeId]
+    );
+    return row?.max_intensity ?? null;
+  }
+
+  /** Lists intensity entries for an episode, oldest first (stable tie-break). */
   listIntensityEntries(episodeId: string): PainIntensityEntry[] {
     const rows = this.db.getAll<IntensityRow>(
       `SELECT * FROM pain_intensity_entries
        WHERE episode_id = ?
-       ORDER BY recorded_at ASC`,
+       ORDER BY recorded_at ASC, created_at ASC, id ASC`,
       [episodeId]
     );
     return rows.map(mapIntensity);
+  }
+
+  /** Alias matching Phase 2 naming. */
+  getIntensityEntries(episodeId: string): PainIntensityEntry[] {
+    return this.listIntensityEntries(episodeId);
   }
 
   /** Replaces all location tags for an episode inside a transaction. */

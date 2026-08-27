@@ -14,7 +14,7 @@ import {
 
 import { colors, radii, spacing, typography } from '@/src/theme/tokens';
 
-type ButtonVariant = 'primary' | 'secondary' | 'ghost';
+type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
 
 type ButtonProps = Omit<PressableProps, 'children' | 'style'> & {
   title: string;
@@ -23,7 +23,7 @@ type ButtonProps = Omit<PressableProps, 'children' | 'style'> & {
 };
 
 /**
- * Simple themed button used by Phase 1 placeholders and future forms.
+ * Simple themed button used by forms and Today actions.
  * Enforces minHeight / minWidth of 44 for accessibility touch targets.
  */
 export function Button({
@@ -33,9 +33,12 @@ export function Button({
   style,
   ...rest
 }: ButtonProps) {
+  const onPrimary = variant === 'primary' || variant === 'danger';
+
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={title}
       disabled={disabled}
       style={({ pressed }) => [
         styles.base,
@@ -49,7 +52,8 @@ export function Button({
       <Text
         style={[
           styles.label,
-          variant === 'primary' ? styles.labelOnPrimary : styles.labelOnSurface,
+          onPrimary ? styles.labelOnPrimary : styles.labelOnSurface,
+          variant === 'ghost' ? styles.labelGhost : null,
         ]}
       >
         {title}
@@ -60,7 +64,7 @@ export function Button({
 
 const styles = StyleSheet.create({
   base: {
-    minHeight: 44,
+    minHeight: 48,
     minWidth: 44,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
@@ -83,6 +87,9 @@ const styles = StyleSheet.create({
   labelOnSurface: {
     color: colors.text,
   },
+  labelGhost: {
+    color: colors.primary,
+  },
 });
 
 const variantStyles = StyleSheet.create({
@@ -96,6 +103,9 @@ const variantStyles = StyleSheet.create({
   },
   ghost: {
     backgroundColor: 'transparent',
+  },
+  danger: {
+    backgroundColor: colors.danger,
   },
 });
 

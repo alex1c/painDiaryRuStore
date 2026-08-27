@@ -115,3 +115,33 @@ export function validateMedicationEffect(effect: string): asserts effect is Medi
     );
   }
 }
+
+/**
+ * Allowed clock skew when accepting "now" timestamps from the UI.
+ * Prevents rejecting legitimate saves due to small device clock drift.
+ */
+export const FUTURE_TOLERANCE_MS = 2 * 60 * 1000;
+
+/**
+ * Rejects timestamps that are meaningfully in the future.
+ * Used for episode start and intensity recordedAt.
+ */
+export function validateNotInFuture(
+  iso: string,
+  field = 'timestamp',
+  nowMs: number = Date.now()
+): void {
+  try {
+    assertIsoTimestamp(iso);
+  } catch {
+    throw new DomainValidationError(`Invalid ${field} timestamp: ${iso}`, field);
+  }
+
+  const ms = Date.parse(iso);
+  if (ms > nowMs + FUTURE_TOLERANCE_MS) {
+    throw new DomainValidationError(
+      `${field} must not be in the future`,
+      field
+    );
+  }
+}
