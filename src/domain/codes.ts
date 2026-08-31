@@ -149,6 +149,13 @@ export const MEDICATION_EFFECTS: readonly MedicationEffect[] = [
   'too_early_to_tell',
 ] as const;
 
+/** Phase 4 UI — subjective effect rating chips (excludes legacy / clinical codes). */
+export const UI_MEDICATION_EFFECTS: readonly MedicationEffect[] = [
+  'no_effect',
+  'helped_somewhat',
+  'helped_a_lot',
+] as const;
+
 /** UI-only grouping for factor chips (not persisted). */
 export const FACTOR_UI_GROUPS: readonly {
   title: string;

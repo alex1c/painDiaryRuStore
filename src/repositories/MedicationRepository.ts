@@ -28,12 +28,14 @@ type IntakeRow = {
   id: string;
   episode_id: string | null;
   medication_id: string;
+  medication_name_snapshot: string | null;
   taken_at: string;
   dose: string | null;
   unit: string | null;
   effect: string | null;
   effect_rated_at: string | null;
   created_at: string;
+  updated_at: string | null;
 };
 
 export type MedicationInput = {
@@ -48,6 +50,16 @@ export type MedicationIntakeInput = {
   medicationId: string;
   takenAt: string;
   episodeId?: string | null;
+  dose?: string | null;
+  unit?: string | null;
+  effect?: MedicationEffect | null;
+  effectRatedAt?: string | null;
+  medicationNameSnapshot?: string;
+};
+
+export type MedicationIntakeUpdate = {
+  medicationId?: string;
+  takenAt?: string;
   dose?: string | null;
   unit?: string | null;
   effect?: MedicationEffect | null;
@@ -72,9 +84,9 @@ export class MedicationRepository {
         [
           id,
           input.name.trim(),
-          input.defaultDose ?? null,
-          input.unit ?? null,
-          input.notes ?? null,
+          normalizeOptionalText(input.defaultDose),
+          normalizeOptionalText(input.unit),
+          normalizeOptionalText(input.notes),
           isArchived,
           now,
           now,
@@ -87,13 +99,46 @@ export class MedicationRepository {
     return {
       id,
       name: input.name.trim(),
-      defaultDose: input.defaultDose ?? null,
-      unit: input.unit ?? null,
-      notes: input.notes ?? null,
+      defaultDose: normalizeOptionalText(input.defaultDose),
+      unit: normalizeOptionalText(input.unit),
+      notes: normalizeOptionalText(input.notes),
       isArchived: Boolean(isArchived),
       createdAt: now,
       updatedAt: now,
     };
+  }
+
+  /**
+   * Finds an active medication by case-insensitive name or creates a new one.
+   * Reactivates archived rows with the same normalized name.
+   */
+  getOrCreateMedication(
+    name: string,
+    defaultDose?: string | null
+  ): Medication {
+    const trimmed = name.trim().replace(/\s+/g, ' ');
+    validateMedicationName(trimmed);
+
+    const existing = this.db.getFirst<MedicationRow>(
+      `SELECT * FROM medications
+       WHERE LOWER(TRIM(name)) = LOWER(?)
+       ORDER BY is_archived ASC, updated_at DESC
+       LIMIT 1`,
+      [trimmed]
+    );
+
+    if (existing) {
+      if (existing.is_archived === 1) {
+        return this.reactivateMedication(existing.id);
+      }
+      const dose = normalizeOptionalText(defaultDose);
+      if (dose && !existing.default_dose) {
+        return this.updateMedication(existing.id, { defaultDose: dose });
+      }
+      return mapMedication(existing);
+    }
+
+    return this.createMedication({ name: trimmed, defaultDose });
   }
 
   getMedicationById(id: string): Medication | null {
@@ -130,11 +175,12 @@ export class MedicationRepository {
 
     const defaultDose =
       patch.defaultDose !== undefined
-        ? patch.defaultDose ?? null
+        ? normalizeOptionalText(patch.defaultDose)
         : existing.defaultDose;
-    const unit = patch.unit !== undefined ? patch.unit ?? null : existing.unit;
+    const unit =
+      patch.unit !== undefined ? normalizeOptionalText(patch.unit) : existing.unit;
     const notes =
-      patch.notes !== undefined ? patch.notes ?? null : existing.notes;
+      patch.notes !== undefined ? normalizeOptionalText(patch.notes) : existing.notes;
     const isArchived =
       patch.isArchived !== undefined ? patch.isArchived : existing.isArchived;
     const updatedAt = nowIsoUtc();
@@ -174,8 +220,14 @@ export class MedicationRepository {
     return this.updateMedication(id, { isArchived: true });
   }
 
+  /** Restores an archived medication to the active quick-pick list. */
+  reactivateMedication(id: string): Medication {
+    return this.updateMedication(id, { isArchived: false });
+  }
+
   createIntake(input: MedicationIntakeInput): MedicationIntake {
-    if (!this.getMedicationById(input.medicationId)) {
+    const medication = this.getMedicationById(input.medicationId);
+    if (!medication) {
       throw new StorageError(`Medication not found: ${input.medicationId}`);
     }
 
@@ -184,26 +236,32 @@ export class MedicationRepository {
     }
 
     const id = createId();
-    const createdAt = nowIsoUtc();
+    const now = nowIsoUtc();
     const episodeId = input.episodeId ?? null;
     const effect = input.effect ?? null;
-    const effectRatedAt = input.effectRatedAt ?? null;
+    const effectRatedAt =
+      effect != null ? input.effectRatedAt ?? now : input.effectRatedAt ?? null;
+    const snapshot =
+      input.medicationNameSnapshot?.trim() || medication.name.trim();
 
     try {
       this.db.run(
         `INSERT INTO medication_intakes
-          (id, episode_id, medication_id, taken_at, dose, unit, effect, effect_rated_at, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          (id, episode_id, medication_id, medication_name_snapshot, taken_at,
+           dose, unit, effect, effect_rated_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           id,
           episodeId,
           input.medicationId,
+          snapshot,
           input.takenAt,
-          input.dose ?? null,
-          input.unit ?? null,
+          normalizeOptionalText(input.dose),
+          normalizeOptionalText(input.unit),
           effect,
           effectRatedAt,
-          createdAt,
+          now,
+          now,
         ]
       );
     } catch (err) {
@@ -214,13 +272,55 @@ export class MedicationRepository {
       id,
       episodeId,
       medicationId: input.medicationId,
+      medicationNameSnapshot: snapshot,
       takenAt: input.takenAt,
-      dose: input.dose ?? null,
-      unit: input.unit ?? null,
+      dose: normalizeOptionalText(input.dose),
+      unit: normalizeOptionalText(input.unit),
       effect,
       effectRatedAt,
-      createdAt,
+      createdAt: now,
+      updatedAt: now,
     };
+  }
+
+  /**
+   * Creates or reuses a catalog medication, then records an episode intake.
+   * Used by quick intake when the user enters a new drug name inline.
+   */
+  recordEpisodeIntake(input: {
+    episodeId: string;
+    medicationId?: string;
+    medicationName?: string;
+    defaultDose?: string | null;
+    dose?: string | null;
+    takenAt?: string;
+  }): MedicationIntake {
+    const medication =
+      input.medicationId != null
+        ? this.getMedicationById(input.medicationId)
+        : input.medicationName
+          ? this.getOrCreateMedication(
+              input.medicationName,
+              input.defaultDose ?? input.dose
+            )
+          : null;
+
+    if (!medication) {
+      throw new StorageError('Medication is required to record intake');
+    }
+
+    const dose =
+      input.dose !== undefined
+        ? input.dose
+        : medication.defaultDose;
+
+    return this.createIntake({
+      medicationId: medication.id,
+      episodeId: input.episodeId,
+      takenAt: input.takenAt ?? nowIsoUtc(),
+      dose,
+      medicationNameSnapshot: medication.name,
+    });
   }
 
   getIntakeById(id: string): MedicationIntake | null {
@@ -228,7 +328,7 @@ export class MedicationRepository {
       'SELECT * FROM medication_intakes WHERE id = ?',
       [id]
     );
-    return row ? mapIntake(row) : null;
+    return row ? mapIntake(row, this.getMedicationById(row.medication_id)) : null;
   }
 
   listIntakesForEpisode(episodeId: string): MedicationIntake[] {
@@ -238,7 +338,83 @@ export class MedicationRepository {
        ORDER BY taken_at ASC`,
       [episodeId]
     );
-    return rows.map(mapIntake);
+    return rows.map((row) =>
+      mapIntake(row, this.getMedicationById(row.medication_id))
+    );
+  }
+
+  updateIntake(id: string, patch: MedicationIntakeUpdate): MedicationIntake {
+    const existing = this.getIntakeById(id);
+    if (!existing) {
+      throw new StorageError(`Intake not found: ${id}`);
+    }
+
+    let medicationId = existing.medicationId;
+    let medicationNameSnapshot = existing.medicationNameSnapshot;
+
+    if (patch.medicationId && patch.medicationId !== existing.medicationId) {
+      const medication = this.getMedicationById(patch.medicationId);
+      if (!medication) {
+        throw new StorageError(`Medication not found: ${patch.medicationId}`);
+      }
+      medicationId = medication.id;
+      medicationNameSnapshot = medication.name;
+    }
+
+    const takenAt = patch.takenAt ?? existing.takenAt;
+    const dose =
+      patch.dose !== undefined ? normalizeOptionalText(patch.dose) : existing.dose;
+    const unit =
+      patch.unit !== undefined ? normalizeOptionalText(patch.unit) : existing.unit;
+
+    let effect = existing.effect;
+    let effectRatedAt = existing.effectRatedAt;
+    if (patch.effect !== undefined) {
+      if (patch.effect == null) {
+        effect = null;
+        effectRatedAt = null;
+      } else {
+        validateMedicationEffect(patch.effect);
+        effect = patch.effect;
+        effectRatedAt = patch.effectRatedAt ?? nowIsoUtc();
+      }
+    }
+
+    const updatedAt = nowIsoUtc();
+
+    try {
+      this.db.run(
+        `UPDATE medication_intakes
+         SET medication_id = ?, medication_name_snapshot = ?, taken_at = ?,
+             dose = ?, unit = ?, effect = ?, effect_rated_at = ?, updated_at = ?
+         WHERE id = ?`,
+        [
+          medicationId,
+          medicationNameSnapshot,
+          takenAt,
+          dose,
+          unit,
+          effect,
+          effectRatedAt,
+          updatedAt,
+          id,
+        ]
+      );
+    } catch (err) {
+      throw new StorageError(`Failed to update intake ${id}`, err);
+    }
+
+    return {
+      ...existing,
+      medicationId,
+      medicationNameSnapshot,
+      takenAt,
+      dose,
+      unit,
+      effect,
+      effectRatedAt,
+      updatedAt,
+    };
   }
 
   /**
@@ -251,28 +427,7 @@ export class MedicationRepository {
     effectRatedAt: string = nowIsoUtc()
   ): MedicationIntake {
     validateMedicationEffect(effect);
-
-    const existing = this.getIntakeById(intakeId);
-    if (!existing) {
-      throw new StorageError(`Intake not found: ${intakeId}`);
-    }
-
-    try {
-      this.db.run(
-        `UPDATE medication_intakes
-         SET effect = ?, effect_rated_at = ?
-         WHERE id = ?`,
-        [effect, effectRatedAt, intakeId]
-      );
-    } catch (err) {
-      throw new StorageError(`Failed to set intake effect ${intakeId}`, err);
-    }
-
-    return {
-      ...existing,
-      effect,
-      effectRatedAt,
-    };
+    return this.updateIntake(intakeId, { effect, effectRatedAt });
   }
 
   deleteIntake(id: string): void {
@@ -290,6 +445,12 @@ export class MedicationRepository {
   }
 }
 
+function normalizeOptionalText(value: string | null | undefined): string | null {
+  if (value == null) return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
 function mapMedication(row: MedicationRow): Medication {
   return {
     id: row.id,
@@ -303,16 +464,26 @@ function mapMedication(row: MedicationRow): Medication {
   };
 }
 
-function mapIntake(row: IntakeRow): MedicationIntake {
+function mapIntake(
+  row: IntakeRow,
+  medication: Medication | null
+): MedicationIntake {
+  const snapshot =
+    row.medication_name_snapshot?.trim() ||
+    medication?.name ||
+    'Лекарство';
+
   return {
     id: row.id,
     episodeId: row.episode_id,
     medicationId: row.medication_id,
+    medicationNameSnapshot: snapshot,
     takenAt: row.taken_at,
     dose: row.dose,
     unit: row.unit,
     effect: row.effect as MedicationEffect | null,
     effectRatedAt: row.effect_rated_at,
     createdAt: row.created_at,
+    updatedAt: row.updated_at ?? row.created_at,
   };
 }

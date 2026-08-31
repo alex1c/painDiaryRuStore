@@ -137,6 +137,8 @@ export interface MedicationIntake {
   /** Null when taken outside a tracked episode. */
   episodeId: string | null;
   medicationId: string;
+  /** Snapshot of catalog name at intake time for stable history display. */
+  medicationNameSnapshot: string;
   /** ISO-8601 UTC when the medication was taken. */
   takenAt: string;
   dose: string | null;
@@ -145,6 +147,7 @@ export interface MedicationIntake {
   /** ISO-8601 UTC when the user rated the effect. */
   effectRatedAt: string | null;
   createdAt: string;
+  updatedAt: string;
 }
 
 /** One daily wellness / headache presence check-in (local calendar day). */

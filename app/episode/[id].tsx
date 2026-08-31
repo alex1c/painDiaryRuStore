@@ -14,10 +14,12 @@ import {
 } from 'react-native';
 
 import { DateTimeField } from '@/components/episode/DateTimeField';
+import { MedicationIntakeSection } from '@/components/medication/MedicationIntakeSection';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Screen } from '@/components/ui/Screen';
-import type { EpisodeDetails, HeadacheEpisode, PainIntensityEntry } from '@/src/domain/types';
+import type { EpisodeDetails, HeadacheEpisode, MedicationIntake, PainIntensityEntry } from '@/src/domain/types';
+import type { MedicationEffect } from '@/src/domain/codes';
 import { DomainValidationError } from '@/src/domain/validation';
 import {
   LOCATION_LABELS,
@@ -35,11 +37,12 @@ import { formatIntensityScore } from '@/src/utils/intensityLabel';
 export default function EpisodeDetailsScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { headacheRepository } = useDatabase();
+  const { headacheRepository, medicationRepository } = useDatabase();
 
   const [episode, setEpisode] = useState<HeadacheEpisode | null>(null);
   const [details, setDetails] = useState<EpisodeDetails | null>(null);
   const [entries, setEntries] = useState<PainIntensityEntry[]>([]);
+  const [intakes, setIntakes] = useState<MedicationIntake[]>([]);
   const [startedAt, setStartedAt] = useState('');
   const [endedAt, setEndedAt] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
@@ -62,7 +65,12 @@ export default function EpisodeDetailsScreen() {
     setEndedAt(found.episode.endedAt);
     setNotes(found.episode.notes ?? '');
     setEntries(found.intensities);
-  }, [headacheRepository, id]);
+    setIntakes(
+      medicationRepository
+        ? medicationRepository.listIntakesForEpisode(id)
+        : []
+    );
+  }, [headacheRepository, medicationRepository, id]);
 
   useFocusEffect(
     useCallback(() => {
@@ -226,6 +234,38 @@ export default function EpisodeDetailsScreen() {
               .join(' • ')}
           </Text>
         </>
+      ) : null}
+
+      <MedicationIntakeSection
+        intakes={intakes}
+        onRateEffect={(intakeId, effect: MedicationEffect) => {
+          medicationRepository?.setIntakeEffect(intakeId, effect);
+          reload();
+        }}
+        onDeleteIntake={(intakeId) => {
+          medicationRepository?.deleteIntake(intakeId);
+          reload();
+        }}
+        onEditIntake={(intakeId) =>
+          router.push({
+            pathname: '/edit-medication-intake',
+            params: { intakeId },
+          })
+        }
+      />
+
+      {isActive ? (
+        <Button
+          title="Принял лекарство"
+          variant="secondary"
+          style={styles.gap}
+          onPress={() =>
+            router.push({
+              pathname: '/log-medication',
+              params: { episodeId: id },
+            })
+          }
+        />
       ) : null}
 
       <View style={styles.block}>

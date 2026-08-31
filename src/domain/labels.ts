@@ -7,6 +7,7 @@ import type {
   FactorCode,
   HeadacheSide,
   LocationCode,
+  MedicationEffect,
   PainCharacterCode,
   SymptomCode,
 } from './codes';
@@ -71,6 +72,40 @@ export const FACTOR_LABELS: Record<Exclude<FactorCode, 'custom'>, string> = {
   weather_change: 'Изменение погоды',
   menstrual_cycle: 'Цикл',
 };
+
+export const MEDICATION_EFFECT_LABELS: Record<MedicationEffect, string> = {
+  helped_a_lot: 'Помогло',
+  helped_somewhat: 'Немного помогло',
+  no_effect: 'Не помогло',
+  made_worse: 'Стало хуже',
+  too_early_to_tell: 'Рано судить',
+};
+
+/** Label when the user has not rated effect yet. */
+export const MEDICATION_EFFECT_UNRATED_LABEL = 'Не оценено';
+
+/** Display dose string from intake or catalog fields (dose is free-text). */
+export function medicationDoseLabel(
+  dose: string | null | undefined,
+  unit: string | null | undefined
+): string | null {
+  const trimmedDose = dose?.trim();
+  const trimmedUnit = unit?.trim();
+  if (trimmedDose && trimmedUnit) {
+    return `${trimmedDose} ${trimmedUnit}`;
+  }
+  return trimmedDose || trimmedUnit || null;
+}
+
+/** Display label for effect rating (null → not rated). */
+export function medicationEffectLabel(
+  effect: MedicationEffect | null | undefined
+): string {
+  if (effect == null) {
+    return MEDICATION_EFFECT_UNRATED_LABEL;
+  }
+  return MEDICATION_EFFECT_LABELS[effect];
+}
 
 /** Display label for a factor row (built-in or custom). */
 export function factorDisplayLabel(

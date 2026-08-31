@@ -19,10 +19,10 @@ async function openTestDb(): Promise<SqlDatabase> {
 }
 
 describe('episode details', () => {
-  test('schema version is 3', async () => {
+  test('schema version is 4', async () => {
     const db = await openTestDb();
-    expect(db.getUserVersion()).toBe(3);
-    expect(CURRENT_SCHEMA_VERSION).toBe(3);
+    expect(db.getUserVersion()).toBe(4);
+    expect(CURRENT_SCHEMA_VERSION).toBe(4);
   });
 
   test('save / reopen / replace / clear details', async () => {

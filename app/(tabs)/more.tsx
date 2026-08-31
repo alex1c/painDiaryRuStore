@@ -1,18 +1,40 @@
 /**
- * More / settings tab — local-first note and static safety disclaimer.
+ * More / settings tab — medications catalog and static safety disclaimer.
  */
 
-import { StyleSheet, Text } from 'react-native';
+import { useRouter } from 'expo-router';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Screen } from '@/components/ui/Screen';
 import { Card } from '@/components/ui/Card';
-import { colors, spacing, typography } from '@/src/theme/tokens';
+import { colors, radii, spacing, typography } from '@/src/theme/tokens';
 
 export default function MoreScreen() {
+  const router = useRouter();
+
   return (
     <Screen scroll>
       <Text style={styles.title}>Ещё</Text>
       <Text style={styles.subtitle}>Настройки и сведения</Text>
+
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Мои лекарства"
+        onPress={() => router.push('/medications/index')}
+        style={({ pressed }) => [
+          styles.linkRow,
+          pressed ? styles.pressed : null,
+        ]}
+      >
+        <View>
+          <Text style={styles.linkTitle}>Мои лекарства</Text>
+          <Text style={styles.linkHint}>
+            Сохранённые лекарства для быстрого приёма
+          </Text>
+        </View>
+        <Text style={styles.chevron}>›</Text>
+      </Pressable>
+
       <Card style={styles.card}>
         <Text style={styles.body}>
           Тема, напоминания и экспорт данных будут здесь. Данные хранятся только
@@ -39,11 +61,40 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
     marginBottom: spacing.md,
   },
+  linkRow: {
+    minHeight: 56,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    backgroundColor: colors.surface,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  linkTitle: {
+    ...typography.subtitle,
+    color: colors.text,
+  },
+  linkHint: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
+  },
+  chevron: {
+    ...typography.title,
+    color: colors.textMuted,
+    marginLeft: spacing.sm,
+  },
   card: {
     marginBottom: spacing.md,
   },
   body: {
     ...typography.body,
     color: colors.textSecondary,
+  },
+  pressed: {
+    opacity: 0.85,
   },
 });

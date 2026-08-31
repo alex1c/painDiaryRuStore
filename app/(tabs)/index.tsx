@@ -16,8 +16,10 @@ import {
 
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { MedicationIntakeSection } from '@/components/medication/MedicationIntakeSection';
 import { Screen } from '@/components/ui/Screen';
-import type { HeadacheEpisode } from '@/src/domain/types';
+import type { HeadacheEpisode, MedicationIntake } from '@/src/domain/types';
+import type { MedicationEffect } from '@/src/domain/codes';
 import { useDatabase } from '@/src/providers/DatabaseProvider';
 import { colors, radii, spacing, typography } from '@/src/theme/tokens';
 import { formatDurationBetween } from '@/src/utils/formatDuration';
@@ -46,13 +48,15 @@ type LoadState =
       latestIntensity: number | null;
       hasDetails: boolean;
       summaryLines: string[];
+      intakes: MedicationIntake[];
       completed: TodayRow[];
       tick: number;
     };
 
 export default function TodayScreen() {
   const router = useRouter();
-  const { ready, error: dbError, headacheRepository } = useDatabase();
+  const { ready, error: dbError, headacheRepository, medicationRepository } =
+    useDatabase();
   const [state, setState] = useState<LoadState>({ status: 'loading' });
 
   const load = useCallback(() => {
@@ -70,6 +74,10 @@ export default function TodayScreen() {
         active != null
           ? headacheRepository.getEpisodeDetails(active.id)
           : null;
+      const intakes =
+        active != null && medicationRepository
+          ? medicationRepository.listIntakesForEpisode(active.id)
+          : [];
       const localDate = toLocalDateString(new Date());
       const completedEpisodes =
         headacheRepository.getCompletedEpisodesForLocalDate(localDate);
@@ -91,6 +99,7 @@ export default function TodayScreen() {
         hasDetails:
           active != null && headacheRepository.hasPainDetails(active.id),
         summaryLines: details ? buildDetailsSummaryLines(details) : [],
+        intakes,
         completed,
         tick: Date.now(),
       });
@@ -100,7 +109,7 @@ export default function TodayScreen() {
         message: 'Не удалось загрузить данные',
       });
     }
-  }, [ready, headacheRepository]);
+  }, [ready, headacheRepository, medicationRepository]);
 
   useFocusEffect(
     useCallback(() => {
@@ -158,7 +167,7 @@ export default function TodayScreen() {
     );
   }
 
-  const { active, latestIntensity, hasDetails, summaryLines, completed, tick } =
+  const { active, latestIntensity, hasDetails, summaryLines, intakes, completed, tick } =
     state;
   const historySectionMode = getTodayHistorySectionMode(
     active != null,
@@ -202,12 +211,35 @@ export default function TodayScreen() {
             </Text>
           ))}
 
+          <MedicationIntakeSection
+            intakes={intakes}
+            compact
+            onRateEffect={(intakeId, effect: MedicationEffect) => {
+              medicationRepository?.setIntakeEffect(intakeId, effect);
+              load();
+            }}
+            onDeleteIntake={(intakeId) => {
+              medicationRepository?.deleteIntake(intakeId);
+              load();
+            }}
+          />
+
           <View style={styles.actions}>
             <Button
               title="Изменить интенсивность"
               onPress={() =>
                 router.push({
                   pathname: '/change-intensity',
+                  params: { episodeId: active.id },
+                })
+              }
+            />
+            <Button
+              title="Принял лекарство"
+              variant="secondary"
+              onPress={() =>
+                router.push({
+                  pathname: '/log-medication',
                   params: { episodeId: active.id },
                 })
               }

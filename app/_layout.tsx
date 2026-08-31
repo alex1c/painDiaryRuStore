@@ -74,6 +74,22 @@ function RootLayoutNav() {
             name="episode-details/[id]"
             options={{ title: 'Подробности' }}
           />
+          <Stack.Screen
+            name="log-medication"
+            options={{ presentation: 'modal', title: 'Принял лекарство' }}
+          />
+          <Stack.Screen
+            name="edit-medication-intake"
+            options={{ presentation: 'modal', title: 'Приём лекарства' }}
+          />
+          <Stack.Screen
+            name="medications/index"
+            options={{ title: 'Мои лекарства' }}
+          />
+          <Stack.Screen
+            name="medication-form"
+            options={{ title: 'Лекарство' }}
+          />
         </Stack>
       </ThemeProvider>
     </DatabaseProvider>
