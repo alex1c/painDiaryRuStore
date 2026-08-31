@@ -6,12 +6,14 @@ import type { MedicationEffect } from '@/src/domain/codes';
 import { StorageError } from '@/src/domain/errors';
 import type { Medication, MedicationIntake } from '@/src/domain/types';
 import {
+  DomainValidationError,
   validateMedicationEffect,
   validateMedicationName,
 } from '@/src/domain/validation';
 import type { SqlDatabase } from '@/src/db/types';
 import { createId } from '@/src/utils/id';
-import { nowIsoUtc } from '@/src/utils/timestamps';
+import { normalizeMedicationName } from '@/src/utils/normalizeName';
+import { assertIsoTimestamp, nowIsoUtc } from '@/src/utils/timestamps';
 
 type MedicationRow = {
   id: string;
@@ -70,7 +72,9 @@ export class MedicationRepository {
   constructor(private readonly db: SqlDatabase) {}
 
   createMedication(input: MedicationInput): Medication {
-    validateMedicationName(input.name);
+    const name = normalizeDisplayName(input.name);
+    validateMedicationName(name);
+    this.assertMedicationNameAvailable(name);
 
     const id = createId();
     const now = nowIsoUtc();
@@ -83,7 +87,7 @@ export class MedicationRepository {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           id,
-          input.name.trim(),
+          name,
           normalizeOptionalText(input.defaultDose),
           normalizeOptionalText(input.unit),
           normalizeOptionalText(input.notes),
@@ -98,7 +102,7 @@ export class MedicationRepository {
 
     return {
       id,
-      name: input.name.trim(),
+      name,
       defaultDose: normalizeOptionalText(input.defaultDose),
       unit: normalizeOptionalText(input.unit),
       notes: normalizeOptionalText(input.notes),
@@ -116,16 +120,10 @@ export class MedicationRepository {
     name: string,
     defaultDose?: string | null
   ): Medication {
-    const trimmed = name.trim().replace(/\s+/g, ' ');
+    const trimmed = normalizeDisplayName(name);
     validateMedicationName(trimmed);
 
-    const existing = this.db.getFirst<MedicationRow>(
-      `SELECT * FROM medications
-       WHERE LOWER(TRIM(name)) = LOWER(?)
-       ORDER BY is_archived ASC, updated_at DESC
-       LIMIT 1`,
-      [trimmed]
-    );
+    const existing = this.findByNormalizedName(trimmed);
 
     if (existing) {
       if (existing.is_archived === 1) {
@@ -170,8 +168,11 @@ export class MedicationRepository {
       throw new StorageError(`Medication not found: ${id}`);
     }
 
-    const name = patch.name !== undefined ? patch.name : existing.name;
+    const name = normalizeDisplayName(
+      patch.name !== undefined ? patch.name : existing.name
+    );
     validateMedicationName(name);
+    this.assertMedicationNameAvailable(name, id);
 
     const defaultDose =
       patch.defaultDose !== undefined
@@ -191,7 +192,7 @@ export class MedicationRepository {
          SET name = ?, default_dose = ?, unit = ?, notes = ?, is_archived = ?, updated_at = ?
          WHERE id = ?`,
         [
-          name.trim(),
+          name,
           defaultDose,
           unit,
           notes,
@@ -206,7 +207,7 @@ export class MedicationRepository {
 
     return {
       ...existing,
-      name: name.trim(),
+      name,
       defaultDose,
       unit,
       notes,
@@ -234,13 +235,16 @@ export class MedicationRepository {
     if (input.effect != null) {
       validateMedicationEffect(input.effect);
     }
+    validateTimestamp(input.takenAt, 'takenAt');
+    if (input.effectRatedAt != null) {
+      validateTimestamp(input.effectRatedAt, 'effectRatedAt');
+    }
 
     const id = createId();
     const now = nowIsoUtc();
     const episodeId = input.episodeId ?? null;
     const effect = input.effect ?? null;
-    const effectRatedAt =
-      effect != null ? input.effectRatedAt ?? now : input.effectRatedAt ?? null;
+    const effectRatedAt = effect != null ? input.effectRatedAt ?? now : null;
     const snapshot =
       input.medicationNameSnapshot?.trim() || medication.name.trim();
 
@@ -295,31 +299,31 @@ export class MedicationRepository {
     dose?: string | null;
     takenAt?: string;
   }): MedicationIntake {
-    const medication =
-      input.medicationId != null
-        ? this.getMedicationById(input.medicationId)
-        : input.medicationName
-          ? this.getOrCreateMedication(
-              input.medicationName,
-              input.defaultDose ?? input.dose
-            )
-          : null;
+    return this.db.withTransaction(() => {
+      const medication =
+        input.medicationId != null
+          ? this.getMedicationById(input.medicationId)
+          : input.medicationName
+            ? this.getOrCreateMedication(
+                input.medicationName,
+                input.defaultDose ?? input.dose
+              )
+            : null;
 
-    if (!medication) {
-      throw new StorageError('Medication is required to record intake');
-    }
+      if (!medication) {
+        throw new StorageError('Medication is required to record intake');
+      }
 
-    const dose =
-      input.dose !== undefined
-        ? input.dose
-        : medication.defaultDose;
+      const dose =
+        input.dose !== undefined ? input.dose : medication.defaultDose;
 
-    return this.createIntake({
-      medicationId: medication.id,
-      episodeId: input.episodeId,
-      takenAt: input.takenAt ?? nowIsoUtc(),
-      dose,
-      medicationNameSnapshot: medication.name,
+      return this.createIntake({
+        medicationId: medication.id,
+        episodeId: input.episodeId,
+        takenAt: input.takenAt ?? nowIsoUtc(),
+        dose,
+        medicationNameSnapshot: medication.name,
+      });
     });
   }
 
@@ -335,7 +339,7 @@ export class MedicationRepository {
     const rows = this.db.getAll<IntakeRow>(
       `SELECT * FROM medication_intakes
        WHERE episode_id = ?
-       ORDER BY taken_at ASC`,
+       ORDER BY taken_at ASC, created_at ASC, id ASC`,
       [episodeId]
     );
     return rows.map((row) =>
@@ -362,6 +366,7 @@ export class MedicationRepository {
     }
 
     const takenAt = patch.takenAt ?? existing.takenAt;
+    validateTimestamp(takenAt, 'takenAt');
     const dose =
       patch.dose !== undefined ? normalizeOptionalText(patch.dose) : existing.dose;
     const unit =
@@ -376,7 +381,13 @@ export class MedicationRepository {
       } else {
         validateMedicationEffect(patch.effect);
         effect = patch.effect;
-        effectRatedAt = patch.effectRatedAt ?? nowIsoUtc();
+        if (patch.effectRatedAt != null) {
+          validateTimestamp(patch.effectRatedAt, 'effectRatedAt');
+        }
+        effectRatedAt =
+          patch.effect === existing.effect
+            ? patch.effectRatedAt ?? existing.effectRatedAt ?? nowIsoUtc()
+            : patch.effectRatedAt ?? nowIsoUtc();
       }
     }
 
@@ -442,6 +453,37 @@ export class MedicationRepository {
       if (err instanceof StorageError) throw err;
       throw new StorageError(`Failed to delete intake ${id}`, err);
     }
+  }
+
+  private findByNormalizedName(name: string): MedicationRow | null {
+    const normalized = normalizeMedicationName(name);
+    const matches = this.db
+      .getAll<MedicationRow>('SELECT * FROM medications')
+      .filter((row) => normalizeMedicationName(row.name) === normalized)
+      .sort((a, b) => a.is_archived - b.is_archived || b.updated_at.localeCompare(a.updated_at));
+    return matches[0] ?? null;
+  }
+
+  private assertMedicationNameAvailable(name: string, exceptId?: string): void {
+    const existing = this.findByNormalizedName(name);
+    if (existing && existing.id !== exceptId) {
+      throw new DomainValidationError(
+        'A medication with this normalized name already exists',
+        'name'
+      );
+    }
+  }
+}
+
+function normalizeDisplayName(value: string): string {
+  return value.trim().replace(/\s+/g, ' ');
+}
+
+function validateTimestamp(value: string, field: string): void {
+  try {
+    assertIsoTimestamp(value);
+  } catch {
+    throw new DomainValidationError(`Invalid ${field} timestamp: ${value}`, field);
   }
 }
 

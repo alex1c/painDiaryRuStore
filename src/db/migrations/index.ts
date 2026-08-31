@@ -6,6 +6,7 @@ import { migration001Initial } from './001_initial';
 import { migration002IntensityRecordedIndex } from './002_intensity_recorded_index';
 import { migration003CustomFactors } from './003_custom_factors';
 import { migration004MedicationIntakeSnapshots } from './004_medication_intake_snapshots';
+import { migration005MedicationIntakeEpisodeCascade } from './005_medication_intake_episode_cascade';
 import type { Migration } from '../types';
 
 /** All forward migrations in ascending version order. */
@@ -14,7 +15,8 @@ export const MIGRATIONS: readonly Migration[] = [
   migration002IntensityRecordedIndex,
   migration003CustomFactors,
   migration004MedicationIntakeSnapshots,
+  migration005MedicationIntakeEpisodeCascade,
 ];
 
 /** Highest schema version this app build knows how to apply. */
-export const CURRENT_SCHEMA_VERSION = 4;
+export const CURRENT_SCHEMA_VERSION = 5;

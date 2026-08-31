@@ -49,10 +49,7 @@ export default function MedicationFormScreen() {
           defaultDose: dose,
         });
       } else {
-        medicationRepository.createMedication({
-          name,
-          defaultDose: dose,
-        });
+        medicationRepository.getOrCreateMedication(name, dose);
       }
       router.back();
     } catch (err) {

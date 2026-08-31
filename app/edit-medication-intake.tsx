@@ -50,10 +50,8 @@ export default function EditMedicationIntakeScreen() {
       medicationRepository.updateIntake(intakeId, {
         dose: dose.trim().length > 0 ? dose.trim() : null,
         takenAt,
+        effect,
       });
-      if (effect != null) {
-        medicationRepository.setIntakeEffect(intakeId, effect);
-      }
       router.back();
     } catch (err) {
       const message =

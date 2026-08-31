@@ -9,3 +9,8 @@
 export function normalizeFactorName(name: string): string {
   return name.trim().replace(/\s+/g, ' ').toLowerCase();
 }
+
+/** Same user-facing normalization rules for medication duplicate detection. */
+export function normalizeMedicationName(name: string): string {
+  return name.trim().replace(/\s+/g, ' ').toLocaleLowerCase();
+}

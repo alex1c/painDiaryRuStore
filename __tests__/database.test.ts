@@ -96,7 +96,7 @@ describe('database', () => {
     expect(meds.getIntakeById(intake.id)?.effectRatedAt).toBeTruthy();
   });
 
-  test('FK cascade: deleting episode nulls intake.episode_id', async () => {
+  test('FK cascade: deleting episode removes linked intake', async () => {
     const db = await openTestDb();
     const headaches = new HeadacheRepository(db);
     const meds = new MedicationRepository(db);
@@ -112,6 +112,6 @@ describe('database', () => {
     });
 
     headaches.deleteEpisode(episode.id);
-    expect(meds.getIntakeById(intake.id)?.episodeId).toBeNull();
+    expect(meds.getIntakeById(intake.id)).toBeNull();
   });
 });
