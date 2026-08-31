@@ -61,7 +61,6 @@ export default function StartEpisodeScreen() {
 
   return (
     <Screen scroll>
-      <Text style={styles.title}>Новый приступ</Text>
       <Text style={styles.subtitle}>
         Выберите интенсивность — этого достаточно, чтобы начать.
       </Text>
@@ -96,11 +95,6 @@ export default function StartEpisodeScreen() {
 }
 
 const styles = StyleSheet.create({
-  title: {
-    ...typography.title,
-    color: colors.text,
-    marginBottom: spacing.xs,
-  },
   subtitle: {
     ...typography.body,
     color: colors.textSecondary,

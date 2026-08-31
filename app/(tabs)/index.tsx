@@ -28,11 +28,13 @@ import {
 } from '@/src/utils/formatTime';
 import { formatIntensityScore } from '@/src/utils/intensityLabel';
 import { toLocalDateString } from '@/src/utils/localDate';
-import { buildDetailsSummaryLines } from '@/src/utils/detailsSummary';
+import { buildCompactCardSummary, buildDetailsSummaryLines } from '@/src/utils/detailsSummary';
+import { getTodayHistorySectionMode } from '@/src/utils/todayHistorySection';
 
 type TodayRow = {
   episode: HeadacheEpisode;
   maxIntensity: number | null;
+  detailSummary: string | null;
 };
 
 type LoadState =
@@ -71,10 +73,16 @@ export default function TodayScreen() {
       const localDate = toLocalDateString(new Date());
       const completedEpisodes =
         headacheRepository.getCompletedEpisodesForLocalDate(localDate);
-      const completed: TodayRow[] = completedEpisodes.map((episode) => ({
-        episode,
-        maxIntensity: headacheRepository.getMaxIntensity(episode.id),
-      }));
+      const completed: TodayRow[] = completedEpisodes.map((episode) => {
+        const details = headacheRepository.getEpisodeDetails(episode.id);
+        return {
+          episode,
+          maxIntensity: headacheRepository.getMaxIntensity(episode.id),
+          detailSummary: details
+            ? buildCompactCardSummary(details)
+            : null,
+        };
+      });
 
       setState({
         status: 'ready',
@@ -152,6 +160,10 @@ export default function TodayScreen() {
 
   const { active, latestIntensity, hasDetails, summaryLines, completed, tick } =
     state;
+  const historySectionMode = getTodayHistorySectionMode(
+    active != null,
+    completed.length
+  );
 
   return (
     <Screen scroll>
@@ -226,34 +238,41 @@ export default function TodayScreen() {
         </Card>
       )}
 
-      <Text style={styles.sectionTitle}>Сегодня</Text>
-      {completed.length === 0 ? (
-        <Text style={styles.empty}>Сегодня приступов не отмечено</Text>
-      ) : (
-        completed.map(({ episode, maxIntensity }) => (
-          <Pressable
-            key={episode.id}
-            accessibilityRole="button"
-            accessibilityLabel={`Приступ ${formatLocalTimeRange(episode.startedAt, episode.endedAt)}`}
-            onPress={() => router.push(`/episode/${episode.id}`)}
-            style={({ pressed }) => [
-              styles.historyCard,
-              pressed ? styles.historyPressed : null,
-            ]}
-          >
-            <Text style={styles.historyRange}>
-              {formatLocalTimeRange(episode.startedAt, episode.endedAt)}
-            </Text>
-            <Text style={styles.historyMeta}>
-              {maxIntensity == null
-                ? 'Интенсивность —'
-                : `Макс. ${formatIntensityScore(maxIntensity)}`}
-              {' · '}
-              {formatDurationBetween(episode.startedAt, episode.endedAt)}
-            </Text>
-          </Pressable>
-        ))
-      )}
+      {historySectionMode !== 'hidden' ? (
+        <>
+          <Text style={styles.sectionTitle}>Сегодня</Text>
+          {historySectionMode === 'empty' ? (
+            <Text style={styles.empty}>Сегодня приступов не отмечено</Text>
+          ) : (
+            completed.map(({ episode, maxIntensity, detailSummary }) => (
+              <Pressable
+                key={episode.id}
+                accessibilityRole="button"
+                accessibilityLabel={`Приступ ${formatLocalTimeRange(episode.startedAt, episode.endedAt)}`}
+                onPress={() => router.push(`/episode/${episode.id}`)}
+                style={({ pressed }) => [
+                  styles.historyCard,
+                  pressed ? styles.historyPressed : null,
+                ]}
+              >
+                <Text style={styles.historyRange}>
+                  {formatLocalTimeRange(episode.startedAt, episode.endedAt)}
+                </Text>
+                {detailSummary ? (
+                  <Text style={styles.historySummary}>{detailSummary}</Text>
+                ) : null}
+                <Text style={styles.historyMeta}>
+                  {maxIntensity == null
+                    ? 'Интенсивность —'
+                    : `Макс. ${formatIntensityScore(maxIntensity)}`}
+                  {' · '}
+                  {formatDurationBetween(episode.startedAt, episode.endedAt)}
+                </Text>
+              </Pressable>
+            ))
+          )}
+        </>
+      ) : null}
     </Screen>
   );
 }
@@ -329,6 +348,11 @@ const styles = StyleSheet.create({
   historyRange: {
     ...typography.subtitle,
     color: colors.text,
+  },
+  historySummary: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
   },
   historyMeta: {
     ...typography.caption,

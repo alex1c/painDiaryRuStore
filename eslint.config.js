@@ -15,6 +15,8 @@ module.exports = [
       'coverage/*',
       'android/*',
       'ios/*',
+      '.tmp-visual-review/*',
+      '.tmp-phase3a/*',
     ],
   },
 ];

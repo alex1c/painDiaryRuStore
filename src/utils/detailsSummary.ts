@@ -80,3 +80,46 @@ export function buildDetailsSummaryLines(details: EpisodeDetails): string[] {
 
   return lines.slice(0, 2);
 }
+
+const COMPACT_CARD_SEPARATOR = ' · ';
+const COMPACT_CARD_MAX_LENGTH = 56;
+
+/**
+ * One-line compact summary for completed Today cards:
+ * side → first location → first pain character.
+ */
+export function buildCompactCardSummary(details: EpisodeDetails): string | null {
+	const parts: string[] = [];
+
+	if (details.episode.side) {
+		parts.push(SIDE_LABELS[details.episode.side]);
+	}
+
+	const firstLocation = details.locations[0];
+	if (firstLocation) {
+		parts.push(
+			firstLocation.code === 'other' && firstLocation.customLabel
+				? firstLocation.customLabel
+				: LOCATION_LABELS[firstLocation.code]
+		);
+	}
+
+	const firstCharacter = details.painCharacters[0];
+	if (firstCharacter) {
+		parts.push(
+			firstCharacter.code === 'other' && firstCharacter.customLabel
+				? firstCharacter.customLabel
+				: PAIN_CHARACTER_LABELS[firstCharacter.code]
+		);
+	}
+
+	if (parts.length === 0) {
+		return null;
+	}
+
+	let summary = parts.join(COMPACT_CARD_SEPARATOR);
+	if (summary.length > COMPACT_CARD_MAX_LENGTH) {
+		summary = `${summary.slice(0, COMPACT_CARD_MAX_LENGTH - 1).trimEnd()}…`;
+	}
+	return summary;
+}
