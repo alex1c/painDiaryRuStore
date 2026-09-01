@@ -3,7 +3,22 @@
  * All validators throw DomainValidationError on failure (never return false silently).
  */
 
-import { MEDICATION_EFFECTS, type MedicationEffect } from './codes';
+import {
+  CAFFEINE_LEVELS,
+  HYDRATION_LEVELS,
+  MEAL_PATTERNS,
+  MEDICATION_EFFECTS,
+  PHYSICAL_ACTIVITY_LEVELS,
+  SLEEP_QUALITIES,
+  STRESS_LEVELS,
+  type CaffeineLevel,
+  type HydrationLevel,
+  type MealPattern,
+  type MedicationEffect,
+  type PhysicalActivityLevel,
+  type SleepQuality,
+  type StressLevel,
+} from './codes';
 import { isValidLocalDateString } from '@/src/utils/localDate';
 import { assertIsoTimestamp } from '@/src/utils/timestamps';
 
@@ -142,6 +157,54 @@ export function validateNotInFuture(
     throw new DomainValidationError(
       `${field} must not be in the future`,
       field
+    );
+  }
+}
+
+function assertEnumValue<T extends string>(
+  value: string,
+  allowed: readonly T[],
+  field: string
+): asserts value is T {
+  if (!(allowed as readonly string[]).includes(value)) {
+    throw new DomainValidationError(`Invalid ${field}: ${value}`, field);
+  }
+}
+
+export function validateSleepQuality(value: string): asserts value is SleepQuality {
+  assertEnumValue(value, SLEEP_QUALITIES, 'sleepQuality');
+}
+
+export function validateStressLevel(value: string): asserts value is StressLevel {
+  assertEnumValue(value, STRESS_LEVELS, 'stressLevel');
+}
+
+export function validateHydrationLevel(
+  value: string
+): asserts value is HydrationLevel {
+  assertEnumValue(value, HYDRATION_LEVELS, 'hydrationLevel');
+}
+
+export function validateCaffeineLevel(value: string): asserts value is CaffeineLevel {
+  assertEnumValue(value, CAFFEINE_LEVELS, 'caffeineLevel');
+}
+
+export function validateMealPattern(value: string): asserts value is MealPattern {
+  assertEnumValue(value, MEAL_PATTERNS, 'mealPattern');
+}
+
+export function validatePhysicalActivityLevel(
+  value: string
+): asserts value is PhysicalActivityLevel {
+  assertEnumValue(value, PHYSICAL_ACTIVITY_LEVELS, 'physicalActivity');
+}
+
+/** Optional sleep duration in whole minutes (0–24h). */
+export function validateSleepDurationMinutes(minutes: number): void {
+  if (!Number.isInteger(minutes) || minutes < 0 || minutes > 24 * 60) {
+    throw new DomainValidationError(
+      'Sleep duration must be 0–1440 minutes',
+      'sleepDurationMinutes'
     );
   }
 }

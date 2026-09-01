@@ -87,8 +87,8 @@ function RootLayoutNav() {
             options={{ title: 'Мои лекарства' }}
           />
           <Stack.Screen
-            name="medication-form"
-            options={{ title: 'Лекарство' }}
+            name="daily-check-in"
+            options={{ title: 'Самочувствие за сегодня' }}
           />
         </Stack>
       </ThemeProvider>

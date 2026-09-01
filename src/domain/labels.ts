@@ -4,11 +4,17 @@
  */
 
 import type {
+  CaffeineLevel,
   FactorCode,
   HeadacheSide,
+  HydrationLevel,
   LocationCode,
+  MealPattern,
   MedicationEffect,
   PainCharacterCode,
+  PhysicalActivityLevel,
+  SleepQuality,
+  StressLevel,
   SymptomCode,
 } from './codes';
 
@@ -117,3 +123,38 @@ export function factorDisplayLabel(
   }
   return FACTOR_LABELS[code];
 }
+
+export const SLEEP_QUALITY_LABELS: Record<SleepQuality, string> = {
+  bad: 'Плохо',
+  medium: 'Средне',
+  good: 'Хорошо',
+};
+
+export const STRESS_LEVEL_LABELS: Record<StressLevel, string> = {
+  low: 'Низкий',
+  medium: 'Средний',
+  high: 'Высокий',
+};
+
+export const HYDRATION_LEVEL_LABELS: Record<HydrationLevel, string> = {
+  low: 'Мало',
+  normal: 'Обычно',
+  high: 'Много',
+};
+
+export const CAFFEINE_LEVEL_LABELS: Record<CaffeineLevel, string> = {
+  none: 'Нет',
+  normal: 'Обычно',
+  more_than_usual: 'Больше обычного',
+};
+
+export const MEAL_PATTERN_LABELS: Record<MealPattern, string> = {
+  normal: 'Обычно',
+  skipped_meals: 'Пропускал(а) еду',
+};
+
+export const PHYSICAL_ACTIVITY_LABELS: Record<PhysicalActivityLevel, string> = {
+  light: 'Нет / лёгкая',
+  normal: 'Обычная',
+  high: 'Высокая',
+};

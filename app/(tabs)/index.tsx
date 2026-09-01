@@ -14,11 +14,12 @@ import {
   View,
 } from 'react-native';
 
+import { DailyCheckInCard } from '@/components/checkin/DailyCheckInCard';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { MedicationIntakeSection } from '@/components/medication/MedicationIntakeSection';
 import { Screen } from '@/components/ui/Screen';
-import type { HeadacheEpisode, MedicationIntake } from '@/src/domain/types';
+import type { DailyCheckIn, HeadacheEpisode, MedicationIntake } from '@/src/domain/types';
 import type { MedicationEffect } from '@/src/domain/codes';
 import { useDatabase } from '@/src/providers/DatabaseProvider';
 import { colors, radii, spacing, typography } from '@/src/theme/tokens';
@@ -50,12 +51,13 @@ type LoadState =
       summaryLines: string[];
       intakes: MedicationIntake[];
       completed: TodayRow[];
+      todayCheckIn: DailyCheckIn | null;
       tick: number;
     };
 
 export default function TodayScreen() {
   const router = useRouter();
-  const { ready, error: dbError, headacheRepository, medicationRepository } =
+  const { ready, error: dbError, headacheRepository, medicationRepository, dailyCheckInRepository } =
     useDatabase();
   const [state, setState] = useState<LoadState>({ status: 'loading' });
 
@@ -79,6 +81,8 @@ export default function TodayScreen() {
           ? medicationRepository.listIntakesForEpisode(active.id)
           : [];
       const localDate = toLocalDateString(new Date());
+      const todayCheckIn =
+        dailyCheckInRepository?.getDailyCheckIn(localDate) ?? null;
       const completedEpisodes =
         headacheRepository.getCompletedEpisodesForLocalDate(localDate);
       const completed: TodayRow[] = completedEpisodes.map((episode) => {
@@ -101,6 +105,7 @@ export default function TodayScreen() {
         summaryLines: details ? buildDetailsSummaryLines(details) : [],
         intakes,
         completed,
+        todayCheckIn,
         tick: Date.now(),
       });
     } catch {
@@ -109,7 +114,7 @@ export default function TodayScreen() {
         message: 'Не удалось загрузить данные',
       });
     }
-  }, [ready, headacheRepository, medicationRepository]);
+  }, [ready, headacheRepository, medicationRepository, dailyCheckInRepository]);
 
   useFocusEffect(
     useCallback(() => {
@@ -167,7 +172,7 @@ export default function TodayScreen() {
     );
   }
 
-  const { active, latestIntensity, hasDetails, summaryLines, intakes, completed, tick } =
+  const { active, latestIntensity, hasDetails, summaryLines, intakes, completed, todayCheckIn, tick } =
     state;
   const historySectionMode = getTodayHistorySectionMode(
     active != null,
@@ -305,6 +310,16 @@ export default function TodayScreen() {
           )}
         </>
       ) : null}
+
+      <DailyCheckInCard
+        checkIn={todayCheckIn}
+        onPress={() =>
+          router.push({
+            pathname: '/daily-check-in',
+            params: { date: toLocalDateString(new Date()) },
+          })
+        }
+      />
     </Screen>
   );
 }

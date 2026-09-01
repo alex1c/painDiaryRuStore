@@ -22,7 +22,7 @@ describe('episode flow', () => {
   test('schema version is 2 after migrations', async () => {
     const db = await openTestDb();
     expect(db.getUserVersion()).toBe(CURRENT_SCHEMA_VERSION);
-    expect(CURRENT_SCHEMA_VERSION).toBe(5);
+    expect(CURRENT_SCHEMA_VERSION).toBe(6);
   });
 
   test('startEpisode creates episode + initial intensity atomically', async () => {

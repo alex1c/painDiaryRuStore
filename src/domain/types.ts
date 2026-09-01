@@ -5,11 +5,17 @@
  */
 
 import type {
+  CaffeineLevel,
   FactorCode,
   HeadacheSide,
+  HydrationLevel,
   LocationCode,
+  MealPattern,
   MedicationEffect,
   PainCharacterCode,
+  PhysicalActivityLevel,
+  SleepQuality,
+  StressLevel,
   SymptomCode,
 } from './codes';
 
@@ -150,14 +156,19 @@ export interface MedicationIntake {
   updatedAt: string;
 }
 
-/** One daily wellness / headache presence check-in (local calendar day). */
+/** One daily wellness check-in for a local calendar day (between-episode context). */
 export interface DailyCheckIn {
   id: string;
   /** Local calendar day as YYYY-MM-DD. */
   localDate: string;
-  headacheToday: boolean;
-  sleepQuality: number | null;
-  stressLevel: number | null;
+  sleepQuality: SleepQuality | null;
+  /** Optional sleep duration stored as whole minutes. */
+  sleepDurationMinutes: number | null;
+  stressLevel: StressLevel | null;
+  hydrationLevel: HydrationLevel | null;
+  caffeineLevel: CaffeineLevel | null;
+  mealPattern: MealPattern | null;
+  physicalActivity: PhysicalActivityLevel | null;
   notes: string | null;
   createdAt: string;
   updatedAt: string;

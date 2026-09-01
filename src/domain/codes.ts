@@ -182,3 +182,56 @@ export const FACTOR_UI_GROUPS: readonly {
     codes: ['menstrual_cycle'],
   },
 ] as const;
+
+/** Subjective sleep quality for daily check-in (optional). */
+export type SleepQuality = 'bad' | 'medium' | 'good';
+
+/** Stress level for daily check-in (optional). */
+export type StressLevel = 'low' | 'medium' | 'high';
+
+/** Subjective hydration for daily check-in (optional). */
+export type HydrationLevel = 'low' | 'normal' | 'high';
+
+/** Caffeine intake relative to personal baseline (optional). */
+export type CaffeineLevel = 'none' | 'normal' | 'more_than_usual';
+
+/** Meal pattern for daily check-in (optional). */
+export type MealPattern = 'normal' | 'skipped_meals';
+
+/** Physical activity level for daily check-in (optional). */
+export type PhysicalActivityLevel = 'light' | 'normal' | 'high';
+
+export const SLEEP_QUALITIES: readonly SleepQuality[] = [
+  'bad',
+  'medium',
+  'good',
+] as const;
+
+export const STRESS_LEVELS: readonly StressLevel[] = [
+  'low',
+  'medium',
+  'high',
+] as const;
+
+export const HYDRATION_LEVELS: readonly HydrationLevel[] = [
+  'low',
+  'normal',
+  'high',
+] as const;
+
+export const CAFFEINE_LEVELS: readonly CaffeineLevel[] = [
+  'none',
+  'normal',
+  'more_than_usual',
+] as const;
+
+export const MEAL_PATTERNS: readonly MealPattern[] = [
+  'normal',
+  'skipped_meals',
+] as const;
+
+export const PHYSICAL_ACTIVITY_LEVELS: readonly PhysicalActivityLevel[] = [
+  'light',
+  'normal',
+  'high',
+] as const;

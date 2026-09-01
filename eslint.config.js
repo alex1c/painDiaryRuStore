@@ -17,6 +17,8 @@ module.exports = [
       'ios/*',
       '.tmp-visual-review/*',
       '.tmp-phase3a/*',
+      '.tmp-phase4-final/*',
+      '.tmp-phase5/*',
     ],
   },
 ];
