@@ -16,6 +16,7 @@ import { openAppDatabase } from '@/src/db/database';
 import type { SqlDatabase } from '@/src/db/types';
 import { formatErrorForDiagnostics } from '@/src/domain/errors';
 import { DailyCheckInRepository } from '@/src/repositories/DailyCheckInRepository';
+import { AnalyticsRepository } from '@/src/analytics/AnalyticsRepository';
 import { CustomFactorRepository } from '@/src/repositories/CustomFactorRepository';
 import { HeadacheRepository } from '@/src/repositories/HeadacheRepository';
 import { MedicationRepository } from '@/src/repositories/MedicationRepository';
@@ -31,6 +32,7 @@ export type DatabaseContextValue = {
   customFactorRepository: CustomFactorRepository | null;
   medicationRepository: MedicationRepository | null;
   dailyCheckInRepository: DailyCheckInRepository | null;
+  analyticsRepository: AnalyticsRepository | null;
   settingsRepository: SettingsRepository | null;
 };
 
@@ -87,6 +89,7 @@ export function DatabaseProvider({ children }: Props) {
         customFactorRepository: null,
         medicationRepository: null,
         dailyCheckInRepository: null,
+        analyticsRepository: null,
         settingsRepository: null,
       };
     }
@@ -99,6 +102,7 @@ export function DatabaseProvider({ children }: Props) {
       customFactorRepository: new CustomFactorRepository(db),
       medicationRepository: new MedicationRepository(db),
       dailyCheckInRepository: new DailyCheckInRepository(db),
+      analyticsRepository: new AnalyticsRepository(db),
       settingsRepository: new SettingsRepository(db),
     };
   }, [db, error]);

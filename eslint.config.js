@@ -18,7 +18,9 @@ module.exports = [
       '.tmp-visual-review/*',
       '.tmp-phase3a/*',
       '.tmp-phase4-final/*',
+      '.tmp-phase5-final/*',
       '.tmp-phase5/*',
+      '.tmp-phase6/*',
     ],
   },
 ];
