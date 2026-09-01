@@ -89,6 +89,7 @@ export default function EditMedicationIntakeScreen() {
       <EffectRatingRow
         effect={effect}
         onSelect={(value) => setEffect(value)}
+        onClear={() => setEffect(null)}
       />
 
       <Button

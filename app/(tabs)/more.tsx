@@ -20,7 +20,7 @@ export default function MoreScreen() {
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Мои лекарства"
-        onPress={() => router.push('/medications/index')}
+        onPress={() => router.push('/medications')}
         style={({ pressed }) => [
           styles.linkRow,
           pressed ? styles.pressed : null,

@@ -17,6 +17,8 @@ import { colors, radii, spacing, typography } from '@/src/theme/tokens';
 type EffectRatingRowProps = {
   effect: MedicationEffect | null;
   onSelect: (effect: MedicationEffect) => void;
+  /** When set, shows a chip to clear the rating back to unrated. */
+  onClear?: () => void;
   compact?: boolean;
 };
 
@@ -26,6 +28,7 @@ type EffectRatingRowProps = {
 export function EffectRatingRow({
   effect,
   onSelect,
+  onClear,
   compact = false,
 }: EffectRatingRowProps) {
   return (
@@ -62,8 +65,24 @@ export function EffectRatingRow({
             </Pressable>
           );
         })}
+        {onClear && effect != null ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={MEDICATION_EFFECT_UNRATED_LABEL}
+            onPress={onClear}
+            style={({ pressed }) => [
+              styles.chip,
+              compact ? styles.chipCompact : null,
+              pressed ? styles.chipPressed : null,
+            ]}
+          >
+            <Text style={styles.chipLabel}>
+              {MEDICATION_EFFECT_UNRATED_LABEL}
+            </Text>
+          </Pressable>
+        ) : null}
       </View>
-      {effect == null ? (
+      {effect == null && onClear == null ? (
         <Text style={styles.hint}>{MEDICATION_EFFECT_UNRATED_LABEL}</Text>
       ) : null}
     </View>
