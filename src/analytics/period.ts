@@ -6,11 +6,20 @@
  */
 
 import type { AnalyticsPeriod, PeriodBounds } from '@/src/analytics/types';
-import { addDaysToLocalDate, parseLocalDate } from '@/src/utils/localDate';
+import {
+  addDaysToLocalDate,
+  compareLocalDates,
+  isValidLocalDateString,
+  parseLocalDate,
+} from '@/src/utils/localDate';
 
 /** Number of inclusive local calendar days covered by fixed windows. */
-const PERIOD_DAY_COUNTS: Record<Exclude<AnalyticsPeriod, 'all'>, number> = {
+const PERIOD_DAY_COUNTS: Record<
+  Exclude<AnalyticsPeriod, 'all' | 'custom'>,
+  number
+> = {
   '7d': 7,
+  '14d': 14,
   '30d': 30,
   '90d': 90,
 };
@@ -27,9 +36,31 @@ export function getPeriodBounds(
     return { from: null, to: todayLocal };
   }
 
+  if (period === 'custom') {
+    throw new Error('getPeriodBounds does not support custom period');
+  }
+
   const dayCount = PERIOD_DAY_COUNTS[period];
   const from = addDaysToLocalDate(todayLocal, -(dayCount - 1));
   return { from, to: todayLocal };
+}
+
+/**
+ * Inclusive custom local-date range for doctor reports.
+ * Both endpoints must be valid YYYY-MM-DD strings with start <= end.
+ */
+export function getCustomPeriodBounds(
+  fromLocal: string,
+  toLocal: string
+): PeriodBounds {
+  if (!isValidLocalDateString(fromLocal) || !isValidLocalDateString(toLocal)) {
+    throw new Error('Invalid custom period dates');
+  }
+  if (compareLocalDates(fromLocal, toLocal) > 0) {
+    throw new Error('Custom period start must be on or before end');
+  }
+
+  return { from: fromLocal, to: toLocal };
 }
 
 /**
@@ -65,7 +96,7 @@ export function chooseFrequencyBucketUnit(
   period: AnalyticsPeriod,
   bounds: PeriodBounds
 ): import('@/src/analytics/types').FrequencyBucketUnit {
-  if (period === '7d' || period === '30d') {
+  if (period === '7d' || period === '14d' || period === '30d') {
     return 'day';
   }
   if (period === '90d') {

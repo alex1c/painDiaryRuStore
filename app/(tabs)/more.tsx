@@ -19,6 +19,24 @@ export default function MoreScreen() {
 
       <Pressable
         accessibilityRole="button"
+        accessibilityLabel="Отчёт врачу"
+        onPress={() => router.push('/doctor-report')}
+        style={({ pressed }) => [
+          styles.linkRow,
+          pressed ? styles.pressed : null,
+        ]}
+      >
+        <View>
+          <Text style={styles.linkTitle}>Отчёт врачу</Text>
+          <Text style={styles.linkHint}>
+            PDF-сводка приступов для консультации
+          </Text>
+        </View>
+        <Text style={styles.chevron}>›</Text>
+      </Pressable>
+
+      <Pressable
+        accessibilityRole="button"
         accessibilityLabel="Мои лекарства"
         onPress={() => router.push('/medications')}
         style={({ pressed }) => [
@@ -37,7 +55,7 @@ export default function MoreScreen() {
 
       <Card style={styles.card}>
         <Text style={styles.body}>
-          Тема, напоминания и экспорт данных будут здесь. Данные хранятся только
+          Тема и напоминания появятся здесь позже. Данные хранятся только
           на устройстве (локальный SQLite).
         </Text>
       </Card>

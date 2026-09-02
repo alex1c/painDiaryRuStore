@@ -64,6 +64,17 @@ export class AnalyticsRepository {
     todayLocal: string = toLocalDateString(new Date())
   ): AnalyticsReport {
     const bounds = getPeriodBounds(period, todayLocal);
+    return this.buildReportForBounds(bounds, period);
+  }
+
+  /**
+   * Builds analytics for explicit inclusive local-date bounds.
+   * Used by doctor reports (custom ranges, 14-day windows).
+   */
+  buildReportForBounds(
+    bounds: import('@/src/analytics/types').PeriodBounds,
+    period: AnalyticsPeriod = 'custom'
+  ): AnalyticsReport {
     const input = this.loadInput(period, bounds);
     return buildAnalyticsReport(input);
   }

@@ -90,6 +90,10 @@ function RootLayoutNav() {
             name="daily-check-in"
             options={{ title: 'Самочувствие за сегодня' }}
           />
+          <Stack.Screen
+            name="doctor-report"
+            options={{ title: 'Отчёт врачу' }}
+          />
         </Stack>
       </ThemeProvider>
     </DatabaseProvider>

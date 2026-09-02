@@ -5,7 +5,13 @@
 import type { MedicationEffect } from '@/src/domain/codes';
 
 /** User-selectable analytics window. */
-export type AnalyticsPeriod = '7d' | '30d' | '90d' | 'all';
+export type AnalyticsPeriod =
+  | '7d'
+  | '14d'
+  | '30d'
+  | '90d'
+  | 'all'
+  | 'custom';
 
 /** Local-date inclusive bounds for a period; `from` is null for "all time". */
 export type PeriodBounds = {
