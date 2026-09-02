@@ -40,15 +40,23 @@ export function periodToUtcHalfOpenRange(bounds: PeriodBounds): {
   rangeStartIso: string | null;
   rangeEndIso: string;
 } {
-  const rangeEndIso = parseLocalDate(
-    addDaysToLocalDate(bounds.to, 1)
-  ).toISOString();
+  return periodToUtcHalfOpenRangeWithConverter(bounds, (localDate) =>
+    parseLocalDate(localDate).toISOString()
+  );
+}
+
+/** Testable boundary conversion core; production supplies local-midnight parsing. */
+export function periodToUtcHalfOpenRangeWithConverter(
+  bounds: PeriodBounds,
+  localMidnightToUtcIso: (localDate: string) => string
+): { rangeStartIso: string | null; rangeEndIso: string } {
+  const rangeEndIso = localMidnightToUtcIso(addDaysToLocalDate(bounds.to, 1));
 
   if (bounds.from == null) {
     return { rangeStartIso: null, rangeEndIso };
   }
 
-  const rangeStartIso = parseLocalDate(bounds.from).toISOString();
+  const rangeStartIso = localMidnightToUtcIso(bounds.from);
   return { rangeStartIso, rangeEndIso };
 }
 
@@ -64,9 +72,11 @@ export function chooseFrequencyBucketUnit(
     return 'week';
   }
 
-  // "All" — monthly when enough history, otherwise weekly.
+  // "All" — monthly when enough history, otherwise weekly. Callers provide
+  // the effective first data date because an all-time PeriodBounds has no
+  // configured lower bound.
   if (bounds.from == null) {
-    return 'month';
+    return 'week';
   }
 
   const start = parseLocalDate(bounds.from).getTime();

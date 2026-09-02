@@ -16,7 +16,11 @@ import {
   MIN_CHECKIN_DAYS_FOR_COMPARISON,
   MIN_PATTERN_RATE_DIFF_PP,
 } from '@/src/analytics/constants';
-import { getPeriodBounds, periodToUtcHalfOpenRange } from '@/src/analytics/period';
+import {
+  getPeriodBounds,
+  periodToUtcHalfOpenRange,
+  periodToUtcHalfOpenRangeWithConverter,
+} from '@/src/analytics/period';
 import type { AnalyticsInput, EpisodeAnalyticsRow } from '@/src/analytics/types';
 import { createDatabaseFromClient } from '@/src/db/database';
 import { createSqlJsAdapter } from '@/src/db/sqlJsAdapter';
@@ -95,6 +99,40 @@ describe('analytics period boundaries', () => {
     expect(rangeStartIso).toBeTruthy();
     expect(rangeEndIso).toBeTruthy();
     expect(rangeStartIso!).not.toBe(rangeEndIso);
+  });
+
+  test.each([
+    [14, '2024-05-31T10:00:00.000Z', '2024-06-01T10:00:00.000Z'],
+    [-7, '2024-06-01T07:00:00.000Z', '2024-06-02T07:00:00.000Z'],
+  ])('Q exact local boundaries at UTC offset %i', (offsetHours, start, end) => {
+    const converter = (localDate: string) => {
+      const [year, month, day] = localDate.split('-').map(Number);
+      return new Date(
+        Date.UTC(year, month - 1, day) - offsetHours * 3_600_000
+      ).toISOString();
+    };
+    expect(
+      periodToUtcHalfOpenRangeWithConverter(
+        { from: '2024-06-01', to: '2024-06-01' },
+        converter
+      )
+    ).toEqual({ rangeStartIso: start, rangeEndIso: end });
+  });
+
+  test('Q DST transition converts each local midnight independently', () => {
+    const utcMidnights: Record<string, string> = {
+      '2024-03-10': '2024-03-10T05:00:00.000Z',
+      '2024-03-11': '2024-03-11T04:00:00.000Z',
+    };
+    expect(
+      periodToUtcHalfOpenRangeWithConverter(
+        { from: '2024-03-10', to: '2024-03-10' },
+        (date) => utcMidnights[date]!
+      )
+    ).toEqual({
+      rangeStartIso: '2024-03-10T05:00:00.000Z',
+      rangeEndIso: '2024-03-11T04:00:00.000Z',
+    });
   });
 });
 
@@ -208,11 +246,76 @@ describe('analytics calculations', () => {
     expect(report.duration.longestMs).toBe(7_200_000);
   });
 
+  test('F invalid negative duration is ignored instead of becoming zero', () => {
+    const report = buildAnalyticsReport(
+      emptyInput({
+        episodes: [
+          episodeRow({
+            id: 'valid',
+            startedAt: '2024-06-01T10:00:00.000Z',
+            endedAt: '2024-06-01T12:00:00.000Z',
+          }),
+          episodeRow({
+            id: 'invalid',
+            startedAt: '2024-06-02T12:00:00.000Z',
+            endedAt: '2024-06-02T11:00:00.000Z',
+          }),
+        ],
+      })
+    );
+    expect(report.duration.averageMs).toBe(7_200_000);
+    expect(report.duration.longestMs).toBe(7_200_000);
+  });
+
   test('G time-of-day buckets', () => {
     expect(localHourToTimeOfDayBucket(2)).toBe('night');
     expect(localHourToTimeOfDayBucket(8)).toBe('morning');
     expect(localHourToTimeOfDayBucket(14)).toBe('day');
     expect(localHourToTimeOfDayBucket(20)).toBe('evening');
+  });
+
+  test.each([
+    [0, 'night'],
+    [5, 'night'],
+    [6, 'morning'],
+    [11, 'morning'],
+    [12, 'day'],
+    [17, 'day'],
+    [18, 'evening'],
+    [23, 'evening'],
+  ] as const)('G exact time-of-day hour boundary %i', (hour, expected) => {
+    expect(localHourToTimeOfDayBucket(hour)).toBe(expected);
+  });
+
+  test('G all-time frequency is weekly below 120 days and monthly at 120', () => {
+    const short = buildAnalyticsReport(
+      emptyInput({
+        period: 'all',
+        bounds: { from: null, to: '2024-06-30' },
+        episodes: [
+          episodeRow({
+            id: 'short',
+            startedAt: '2024-06-01T10:00:00.000Z',
+            localStartDate: '2024-06-01',
+          }),
+        ],
+      })
+    );
+    const long = buildAnalyticsReport(
+      emptyInput({
+        period: 'all',
+        bounds: { from: null, to: '2024-06-30' },
+        episodes: [
+          episodeRow({
+            id: 'long',
+            startedAt: '2024-03-03T10:00:00.000Z',
+            localStartDate: '2024-03-03',
+          }),
+        ],
+      })
+    );
+    expect(short.frequency.unit).toBe('week');
+    expect(long.frequency.unit).toBe('month');
   });
 
   test('H symptom ranking by episode count', () => {
@@ -418,6 +521,65 @@ describe('analytics calculations', () => {
     expect(observation?.text).toContain('высокий');
   });
 
+  test('P exact five-day sample threshold is eligible', () => {
+    expect(tryBuildObservation('Стресс', [
+      {
+        valueKey: 'high',
+        valueLabel: 'Высокий',
+        totalDays: 2,
+        headacheDays: 1,
+        headacheRate: 0.5,
+      },
+      {
+        valueKey: 'low',
+        valueLabel: 'Низкий',
+        totalDays: 3,
+        headacheDays: 1,
+        headacheRate: 1 / 3,
+      },
+    ])).not.toBeNull();
+  });
+
+  test('P exact 15 percentage-point threshold is eligible', () => {
+    expect(tryBuildObservation('Стресс', [
+      {
+        valueKey: 'high',
+        valueLabel: 'Высокий',
+        totalDays: 20,
+        headacheDays: 10,
+        headacheRate: 0.5,
+      },
+      {
+        valueKey: 'low',
+        valueLabel: 'Низкий',
+        totalDays: 20,
+        headacheDays: 7,
+        headacheRate: 0.35,
+      },
+    ])).not.toBeNull();
+  });
+
+  test('P a 14 percentage-point gap remains suppressed', () => {
+    expect(
+      tryBuildObservation('Стресс', [
+        {
+          valueKey: 'high',
+          valueLabel: 'Высокий',
+          totalDays: 3,
+          headacheDays: 1,
+          headacheRate: 0.5,
+        },
+        {
+          valueKey: 'low',
+          valueLabel: 'Низкий',
+          totalDays: 2,
+          headacheDays: 1,
+          headacheRate: 0.36,
+        },
+      ])
+    ).toBeNull();
+  });
+
   test('R deterministic sorting on ties', () => {
     const report = buildAnalyticsReport(
       emptyInput({
@@ -433,6 +595,47 @@ describe('analytics calculations', () => {
 });
 
 describe('analytics repository integration', () => {
+  test('uses half-open episode and medication taken_at boundaries', async () => {
+    const db = await openTestDb();
+    const headaches = new HeadacheRepository(db);
+    const meds = new MedicationRepository(db);
+    const analytics = new AnalyticsRepository(db);
+    const bounds = getPeriodBounds('7d', '2024-06-07');
+    const { rangeStartIso, rangeEndIso } = periodToUtcHalfOpenRange(bounds);
+    const beforeStart = new Date(Date.parse(rangeStartIso!) - 1).toISOString();
+
+    const before = headaches.startEpisode({ intensity: 2, startedAt: beforeStart });
+    headaches.finishEpisode(before.episode.id, beforeStart);
+    const atStart = headaches.startEpisode({ intensity: 4, startedAt: rangeStartIso! });
+    headaches.finishEpisode(atStart.episode.id, rangeStartIso!);
+    const atEnd = headaches.startEpisode({ intensity: 8, startedAt: rangeEndIso });
+    headaches.finishEpisode(atEnd.episode.id, rangeEndIso);
+
+    const medication = meds.createMedication({ name: 'Текущее имя' });
+    meds.createIntake({
+      medicationId: medication.id,
+      takenAt: beforeStart,
+      medicationNameSnapshot: 'До периода',
+    });
+    meds.createIntake({
+      medicationId: medication.id,
+      takenAt: rangeStartIso!,
+      medicationNameSnapshot: 'Историческое имя',
+    });
+    meds.createIntake({
+      medicationId: medication.id,
+      takenAt: rangeEndIso,
+      medicationNameSnapshot: 'На верхней границе',
+    });
+
+    const report = analytics.buildReport('7d', '2024-06-07');
+    expect(report.overview.episodeCount).toBe(1);
+    expect(report.overview.averageIntensity).toBe(4);
+    expect(report.medications).toEqual([
+      expect.objectContaining({ name: 'Историческое имя', intakeCount: 1 }),
+    ]);
+  });
+
   test('loads episodes, tags, medications, and check-ins for a period', async () => {
     const db = await openTestDb();
     const headaches = new HeadacheRepository(db);

@@ -76,8 +76,8 @@ export function buildAnalyticsReport(input: AnalyticsInput): AnalyticsReport {
 
   const completedDurations = episodes
     .filter((e) => e.endedAt != null)
-    .map((e) => Math.max(0, Date.parse(e.endedAt!) - Date.parse(e.startedAt)))
-    .filter((ms) => Number.isFinite(ms));
+    .map((e) => Date.parse(e.endedAt!) - Date.parse(e.startedAt))
+    .filter((ms) => Number.isFinite(ms) && ms >= 0);
 
   const averageDurationMs =
     completedDurations.length > 0
@@ -89,7 +89,14 @@ export function buildAnalyticsReport(input: AnalyticsInput): AnalyticsReport {
   const longestDurationMs =
     completedDurations.length > 0 ? Math.max(...completedDurations) : null;
 
-  const unit = chooseFrequencyBucketUnit(input.period, input.bounds);
+  const frequencyBounds =
+    input.period === 'all'
+      ? {
+          from: minLocalDate([...headacheDays], input.bounds.to) ?? input.bounds.to,
+          to: input.bounds.to,
+        }
+      : input.bounds;
+  const unit = chooseFrequencyBucketUnit(input.period, frequencyBounds);
   const frequencyBuckets = buildFrequencyBuckets(
     headacheDays,
     input.bounds,
@@ -512,12 +519,17 @@ export function tryBuildObservation(
     return null;
   }
 
-  const sorted = [...eligible].sort((a, b) => b.headacheRate - a.headacheRate);
+  const sorted = [...eligible].sort((a, b) => {
+    if (b.headacheRate !== a.headacheRate) {
+      return b.headacheRate - a.headacheRate;
+    }
+    return a.valueKey.localeCompare(b.valueKey);
+  });
   const higher = sorted[0];
   const lower = sorted[sorted.length - 1];
   const diffPp = (higher.headacheRate - lower.headacheRate) * 100;
 
-  if (diffPp < MIN_PATTERN_RATE_DIFF_PP) {
+  if (diffPp + Number.EPSILON * 100 < MIN_PATTERN_RATE_DIFF_PP) {
     return null;
   }
 
