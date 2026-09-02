@@ -16,45 +16,73 @@ import {
 
 export class DoctorReportService {
   /**
-   * Renders HTML to a cached PDF file and returns its local URI.
-   * Overwrites any previous report with the same period file name.
+   * Renders HTML to a PDF file and returns a shareable local URI.
+   * Copies into documentDirectory when needed for Expo Go file permissions.
    */
   async createPdf(report: DoctorReport): Promise<DoctorReportPdfResult> {
     const html = renderDoctorReportHtml(report);
     const fileName = buildReportFileName(report.bounds);
 
+    let printUri: string;
+    let base64: string | undefined;
     try {
-      const { uri: tempUri } = await Print.printToFileAsync({ html });
-      const cacheDir = FileSystem.cacheDirectory;
-      if (!cacheDir) {
-        throw new Error('Cache directory unavailable');
+      const result = await Print.printToFileAsync({ html, base64: true });
+      printUri = result.uri;
+      base64 = result.base64;
+    } catch (error) {
+      if (__DEV__) {
+        console.error('[DoctorReportService] printToFileAsync failed', error);
       }
+      throw new Error(REPORT_GENERATION_ERROR);
+    }
 
-      const destUri = `${cacheDir}${fileName}`;
+    const documentDir = FileSystem.documentDirectory;
+    if (!documentDir || !base64) {
+      return { fileUri: printUri, fileName };
+    }
+
+    const destUri = `${documentDir}${fileName}`;
+    try {
       const existing = await FileSystem.getInfoAsync(destUri);
       if (existing.exists) {
         await FileSystem.deleteAsync(destUri, { idempotent: true });
       }
 
-      await FileSystem.moveAsync({ from: tempUri, to: destUri });
-
-      return { fileUri: destUri, fileName };
-    } catch {
-      throw new Error(REPORT_GENERATION_ERROR);
+      await FileSystem.writeAsStringAsync(destUri, base64, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+    } catch (error) {
+      if (__DEV__) {
+        console.error('[DoctorReportService] document write failed', error);
+      }
+      return { fileUri: printUri, fileName };
     }
+
+    try {
+      await FileSystem.deleteAsync(printUri, { idempotent: true });
+    } catch {
+      // Temp print files are disposable; ignore cleanup failures.
+    }
+
+    if (__DEV__) {
+      console.log('[DoctorReportService] pdf saved to', destUri);
+    }
+    return { fileUri: destUri, fileName };
   }
 
   /** Opens the native share sheet for a generated PDF file. */
   async sharePdf(fileUri: string): Promise<void> {
-    const available = await Sharing.isAvailableAsync();
-    if (!available) {
+    try {
+      await Sharing.shareAsync(fileUri, {
+        mimeType: 'application/pdf',
+        UTI: 'com.adobe.pdf',
+        dialogTitle: 'Поделиться отчётом',
+      });
+    } catch (error) {
+      if (__DEV__) {
+        console.error('[DoctorReportService] shareAsync failed', error);
+      }
       throw new Error(REPORT_SHARE_UNAVAILABLE);
     }
-
-    await Sharing.shareAsync(fileUri, {
-      mimeType: 'application/pdf',
-      UTI: 'com.adobe.pdf',
-      dialogTitle: 'Поделиться отчётом',
-    });
   }
 }

@@ -20,7 +20,7 @@ import {
   REPORT_SHARE_UNAVAILABLE,
   validateCustomReportRange,
 } from '@/src/reports';
-import type { ReportPeriodPreset } from '@/src/reports/types';
+import type { DoctorReportPdfResult, ReportPeriodPreset } from '@/src/reports/types';
 import { useDatabase } from '@/src/providers/DatabaseProvider';
 import {
   addDaysToLocalDate,
@@ -40,6 +40,10 @@ export default function DoctorReportScreen() {
   const [customTo, setCustomTo] = useState(todayLocal);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [pdfCache, setPdfCache] = useState<{
+    key: string;
+    pdf: DoctorReportPdfResult;
+  } | null>(null);
 
   const customValidation = useMemo(() => {
     if (preset !== 'custom') {
@@ -75,6 +79,14 @@ export default function DoctorReportScreen() {
     todayLocal,
   ]);
 
+  const reportCacheKey = useMemo(
+    () =>
+      `${preset}:${customFrom}:${customTo}:${report?.preview.periodLabel ?? ''}`,
+    [preset, customFrom, customTo, report?.preview.periodLabel]
+  );
+  const cachedPdf =
+    pdfCache?.key === reportCacheKey ? pdfCache.pdf : null;
+
   const hasEpisodes = report?.preview.hasEpisodes ?? false;
 
   const runPdfAction = useCallback(
@@ -87,7 +99,15 @@ export default function DoctorReportScreen() {
       setActionError(null);
 
       try {
-        const pdf = await reportService.createPdf(report);
+        const pdf =
+          shareAfter && cachedPdf
+            ? cachedPdf
+            : await reportService.createPdf(report);
+
+        if (!shareAfter || !cachedPdf) {
+          setPdfCache({ key: reportCacheKey, pdf });
+        }
+
         if (shareAfter) {
           await reportService.sharePdf(pdf.fileUri);
         }
@@ -98,13 +118,15 @@ export default function DoctorReportScreen() {
           message === REPORT_SHARE_UNAVAILABLE ||
             message === REPORT_GENERATION_ERROR
             ? message
-            : REPORT_GENERATION_ERROR
+            : shareAfter
+              ? REPORT_SHARE_UNAVAILABLE
+              : REPORT_GENERATION_ERROR
         );
       } finally {
         setBusy(false);
       }
     },
-    [report, hasEpisodes]
+    [report, hasEpisodes, cachedPdf, reportCacheKey]
   );
 
   return (
