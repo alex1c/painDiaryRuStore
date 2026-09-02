@@ -9,11 +9,12 @@ export const CSV_DELIMITER = ';';
 /** UTF-8 byte order mark prepended to every exported file. */
 export const CSV_BOM = '\uFEFF';
 
-const FORMULA_PREFIX_RE = /^[=+\-@]/;
+const FORMULA_PREFIX_RE = /^[\u0000-\u0020]*[=+\-@]/;
 
 /**
  * Prefixes user-controlled text that could execute as a spreadsheet formula.
- * Excel treats leading = + - @ as formula starters; apostrophe forces literal text.
+ * Leading ASCII whitespace/control characters are included because spreadsheet
+ * importers may ignore them before interpreting = + - @ as a formula starter.
  */
 export function sanitizeSpreadsheetCell(value: string): string {
   if (value.length === 0) {

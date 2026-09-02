@@ -88,6 +88,18 @@ describe('csv formula injection', () => {
   test('@something is prefixed', () => {
     expect(sanitizeSpreadsheetCell('@something')).toBe("'@something");
   });
+
+  test.each([
+    [' =SUM(1,2)', "' =SUM(1,2)"],
+    ['\t=SUM(1,2)', "'\t=SUM(1,2)"],
+    ['\r=SUM(1,2)', "'\r=SUM(1,2)"],
+  ])('formula after whitespace/control is prefixed: %p', (input, expected) => {
+    expect(sanitizeSpreadsheetCell(input)).toBe(expected);
+  });
+
+  test.each(['Ибупрофен', '400 мг'])('normal text is unchanged: %p', (input) => {
+    expect(sanitizeSpreadsheetCell(input)).toBe(input);
+  });
 });
 
 describe('csv export service', () => {

@@ -3,6 +3,7 @@
  */
 
 import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system/legacy';
 import { useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
@@ -11,6 +12,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Screen } from '@/components/ui/Screen';
 import type { BackupPreview, ValidatedBackup } from '@/src/backup/types';
+import { MAX_BACKUP_JSON_BYTES } from '@/src/backup/constants';
 import { useDatabase } from '@/src/providers/DatabaseProvider';
 import { colors, spacing, typography } from '@/src/theme/tokens';
 
@@ -43,8 +45,14 @@ export default function RestoreScreen() {
       }
 
       const asset = result.assets[0];
-      const response = await fetch(asset.uri);
-      const text = await response.text();
+      const info = await FileSystem.getInfoAsync(asset.uri);
+      const fileSize = asset.size ?? (info.exists ? info.size : undefined);
+      if (fileSize != null && fileSize > MAX_BACKUP_JSON_BYTES) {
+        throw new Error('Файл резервной копии слишком большой.');
+      }
+      const text = await FileSystem.readAsStringAsync(asset.uri, {
+        encoding: FileSystem.EncodingType.UTF8,
+      });
 
       const { BackupService } = await import('@/src/backup/BackupService');
       const service = new BackupService(db);

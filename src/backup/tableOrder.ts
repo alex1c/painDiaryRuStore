@@ -38,3 +38,21 @@ export const BACKUP_INSERT_ORDER: (keyof BackupDataPayload)[] = [
 export const BACKUP_TABLE_NAMES: (keyof BackupDataPayload)[] = [
   ...BACKUP_INSERT_ORDER,
 ];
+
+/** Exact v1 columns, used for validation and identifier-safe inserts. */
+export const BACKUP_TABLE_COLUMNS: Record<
+  keyof BackupDataPayload,
+  readonly string[]
+> = {
+  headache_episodes: ['id', 'started_at', 'ended_at', 'side', 'notes', 'created_at', 'updated_at'],
+  pain_intensity_entries: ['id', 'episode_id', 'recorded_at', 'intensity', 'created_at'],
+  episode_locations: ['id', 'episode_id', 'code', 'custom_label'],
+  episode_pain_characters: ['id', 'episode_id', 'code', 'custom_label'],
+  episode_symptoms: ['id', 'episode_id', 'code', 'custom_label'],
+  episode_factors: ['id', 'episode_id', 'code', 'custom_label', 'custom_factor_id'],
+  custom_factors: ['id', 'name', 'normalized_name', 'is_archived', 'created_at', 'updated_at'],
+  medications: ['id', 'name', 'default_dose', 'unit', 'notes', 'is_archived', 'created_at', 'updated_at'],
+  medication_intakes: ['id', 'episode_id', 'medication_id', 'taken_at', 'dose', 'unit', 'effect', 'effect_rated_at', 'created_at', 'medication_name_snapshot', 'updated_at'],
+  daily_check_ins: ['id', 'local_date', 'sleep_quality', 'sleep_duration_minutes', 'stress_level', 'hydration_level', 'caffeine_level', 'meal_pattern', 'physical_activity', 'notes', 'created_at', 'updated_at'],
+  app_settings: ['key', 'value', 'updated_at'],
+};

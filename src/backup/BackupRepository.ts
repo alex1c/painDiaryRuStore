@@ -8,6 +8,7 @@ import type { SqlDatabase } from '@/src/db/types';
 import {
   BACKUP_DELETE_ORDER,
   BACKUP_INSERT_ORDER,
+  BACKUP_TABLE_COLUMNS,
   BACKUP_TABLE_NAMES,
 } from './tableOrder';
 import type { BackupDataPayload } from './types';
@@ -56,10 +57,7 @@ export class BackupRepository {
 
   /** Inserts one row using column names from the backup object. */
   private insertRow(table: keyof BackupDataPayload, row: Record<string, unknown>): void {
-    const columns = Object.keys(row);
-    if (columns.length === 0) {
-      return;
-    }
+    const columns = BACKUP_TABLE_COLUMNS[table];
 
     const placeholders = columns.map(() => '?').join(', ');
     const sql = `INSERT INTO ${table} (${columns.join(', ')}) VALUES (${placeholders})`;

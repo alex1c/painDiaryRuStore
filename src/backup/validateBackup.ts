@@ -10,7 +10,6 @@ import {
   HYDRATION_LEVELS,
   LOCATION_CODES,
   MEAL_PATTERNS,
-  MEDICATION_EFFECTS,
   PAIN_CHARACTER_CODES,
   PHYSICAL_ACTIVITY_LEVELS,
   SLEEP_QUALITIES,
@@ -24,7 +23,7 @@ import {
   MAX_ROWS_PER_TABLE,
   SUPPORTED_BACKUP_VERSION,
 } from './constants';
-import { BACKUP_TABLE_NAMES } from './tableOrder';
+import { BACKUP_TABLE_COLUMNS, BACKUP_TABLE_NAMES } from './tableOrder';
 import type {
   BackupDataPayload,
   BackupFile,
@@ -74,6 +73,8 @@ export function validateBackupStructure(parsed: unknown): BackupFile {
 
   const obj = parsed as Record<string, unknown>;
 
+  assertExactKeys(obj, ['format', 'version', 'exportedAt', 'appVersion', 'data'], 'backup');
+
   if (obj.format !== BACKUP_FORMAT) {
     throw new BackupValidationError(
       'Это не резервная копия «Дневника головной боли».'
@@ -99,6 +100,12 @@ export function validateBackupStructure(parsed: unknown): BackupFile {
   if (!obj.data || typeof obj.data !== 'object' || Array.isArray(obj.data)) {
     throw new BackupValidationError('Отсутствуют данные резервной копии.');
   }
+
+  assertExactKeys(
+    obj.data as Record<string, unknown>,
+    BACKUP_TABLE_NAMES,
+    'data'
+  );
 
   return {
     format: BACKUP_FORMAT,
@@ -165,6 +172,7 @@ function validateEpisodes(rows: unknown[]): Set<string> {
 
   for (const row of rows) {
     const r = asRow(row, 'headache_episodes');
+    assertRowColumns(r, 'headache_episodes');
     const id = readRequiredString(r.id, 'id');
     assertUniqueId(ids, id, 'headache_episodes');
 
@@ -179,6 +187,7 @@ function validateEpisodes(rows: unknown[]): Set<string> {
     if (r.side !== null && r.side !== undefined) {
       assertEnum(r.side, HEADACHE_SIDES, 'side');
     }
+    assertNullableString(r.notes, 'notes');
 
     readRequiredString(r.created_at, 'created_at');
     readRequiredString(r.updated_at, 'updated_at');
@@ -200,12 +209,18 @@ function validateMedications(rows: unknown[]): Set<string> {
 
   for (const row of rows) {
     const r = asRow(row, 'medications');
+    assertRowColumns(r, 'medications');
     const id = readRequiredString(r.id, 'id');
     assertUniqueId(ids, id, 'medications');
     readRequiredString(r.name, 'name');
+    assertNullableString(r.default_dose, 'default_dose');
+    assertNullableString(r.unit, 'unit');
+    assertNullableString(r.notes, 'notes');
     assertArchivedFlag(r.is_archived, 'is_archived');
     readRequiredString(r.created_at, 'created_at');
     readRequiredString(r.updated_at, 'updated_at');
+    assertIso(r.created_at, 'created_at');
+    assertIso(r.updated_at, 'updated_at');
   }
 
   return ids;
@@ -217,6 +232,7 @@ function validateCustomFactors(rows: unknown[]): Set<string> {
 
   for (const row of rows) {
     const r = asRow(row, 'custom_factors');
+    assertRowColumns(r, 'custom_factors');
     const id = readRequiredString(r.id, 'id');
     assertUniqueId(ids, id, 'custom_factors');
     readRequiredString(r.name, 'name');
@@ -230,6 +246,8 @@ function validateCustomFactors(rows: unknown[]): Set<string> {
     assertArchivedFlag(r.is_archived, 'is_archived');
     readRequiredString(r.created_at, 'created_at');
     readRequiredString(r.updated_at, 'updated_at');
+    assertIso(r.created_at, 'created_at');
+    assertIso(r.updated_at, 'updated_at');
   }
 
   return ids;
@@ -243,6 +261,7 @@ function validateIntensityEntries(
 
   for (const row of rows) {
     const r = asRow(row, 'pain_intensity_entries');
+    assertRowColumns(r, 'pain_intensity_entries');
     const id = readRequiredString(r.id, 'id');
     assertUniqueId(ids, id, 'pain_intensity_entries');
     const episodeId = readRequiredString(r.episode_id, 'episode_id');
@@ -253,6 +272,7 @@ function validateIntensityEntries(
       throw new BackupValidationError('Некорректная интенсивность боли.');
     }
     readRequiredString(r.created_at, 'created_at');
+    assertIso(r.created_at, 'created_at');
   }
 }
 
@@ -264,6 +284,7 @@ function validateEpisodeTags(
   validateFields: TagRowValidator
 ): void {
   const ids = new Set<string>();
+  const logicalRows = new Set<string>();
 
   for (const row of rows) {
     const r = asRow(row, 'episode tag');
@@ -272,20 +293,26 @@ function validateEpisodeTags(
     const episodeId = readRequiredString(r.episode_id, 'episode_id');
     assertFk(episodeIds, episodeId, 'episode_id');
     validateFields(r);
+    assertNullableString(r.custom_label, 'custom_label');
+    const logicalKey = `${episodeId}\u0000${String(r.code)}\u0000${String(r.custom_label ?? '')}`;
+    assertUniqueLogicalRow(logicalRows, logicalKey, 'episode tag');
   }
 }
 
 function validateLocationRow(row: Record<string, unknown>): void {
+  assertRowColumns(row, 'episode_locations');
   readRequiredString(row.code, 'code');
   assertEnum(row.code, LOCATION_CODES, 'code');
 }
 
 function validatePainCharacterRow(row: Record<string, unknown>): void {
+  assertRowColumns(row, 'episode_pain_characters');
   readRequiredString(row.code, 'code');
   assertEnum(row.code, PAIN_CHARACTER_CODES, 'code');
 }
 
 function validateSymptomRow(row: Record<string, unknown>): void {
+  assertRowColumns(row, 'episode_symptoms');
   readRequiredString(row.code, 'code');
   assertEnum(row.code, SYMPTOM_CODES, 'code');
 }
@@ -296,19 +323,30 @@ function validateEpisodeFactors(
   customFactorIds: Set<string>
 ): void {
   const ids = new Set<string>();
+  const logicalRows = new Set<string>();
 
   for (const row of rows) {
     const r = asRow(row, 'episode_factors');
+    assertRowColumns(r, 'episode_factors');
     const id = readRequiredString(r.id, 'id');
     assertUniqueId(ids, id, 'episode_factors');
     const episodeId = readRequiredString(r.episode_id, 'episode_id');
     assertFk(episodeIds, episodeId, 'episode_id');
     readRequiredString(r.code, 'code');
     assertEnum(r.code, FACTOR_CODES, 'code');
+    assertNullableString(r.custom_label, 'custom_label');
 
-    if (r.custom_factor_id !== null && r.custom_factor_id !== undefined) {
-      assertFk(customFactorIds, String(r.custom_factor_id), 'custom_factor_id');
+    if (r.code === 'custom') {
+      const customFactorId = readRequiredString(r.custom_factor_id, 'custom_factor_id');
+      assertFk(customFactorIds, customFactorId, 'custom_factor_id');
+      readRequiredString(r.custom_label, 'custom_label');
+    } else if (r.custom_factor_id !== null) {
+      throw new BackupValidationError('Некорректная связь: custom_factor_id.');
     }
+    const logicalKey = r.code === 'custom'
+      ? `${episodeId}\u0000custom\u0000${String(r.custom_factor_id)}`
+      : `${episodeId}\u0000${String(r.code)}`;
+    assertUniqueLogicalRow(logicalRows, logicalKey, 'episode_factors');
   }
 }
 
@@ -321,6 +359,7 @@ function validateMedicationIntakes(
 
   for (const row of rows) {
     const r = asRow(row, 'medication_intakes');
+    assertRowColumns(r, 'medication_intakes');
     const id = readRequiredString(r.id, 'id');
     assertUniqueId(ids, id, 'medication_intakes');
     const medicationId = readRequiredString(r.medication_id, 'medication_id');
@@ -331,12 +370,22 @@ function validateMedicationIntakes(
     }
 
     readRequiredString(r.medication_name_snapshot, 'medication_name_snapshot');
+    assertNullableString(r.dose, 'dose');
+    assertNullableString(r.unit, 'unit');
     assertIso(r.taken_at, 'taken_at');
     readRequiredString(r.created_at, 'created_at');
     readRequiredString(r.updated_at, 'updated_at');
+    assertIso(r.created_at, 'created_at');
+    assertIso(r.updated_at, 'updated_at');
 
     if (r.effect !== null && r.effect !== undefined) {
-      assertEnum(r.effect, MEDICATION_EFFECTS, 'effect');
+      readRequiredString(r.effect, 'effect');
+      if (r.effect_rated_at === null) {
+        throw new BackupValidationError('Отсутствует поле: effect_rated_at.');
+      }
+      assertIso(r.effect_rated_at, 'effect_rated_at');
+    } else if (r.effect_rated_at !== null) {
+      throw new BackupValidationError('Некорректная дата/время: effect_rated_at.');
     }
   }
 }
@@ -347,10 +396,11 @@ function validateDailyCheckIns(rows: unknown[]): void {
 
   for (const row of rows) {
     const r = asRow(row, 'daily_check_ins');
+    assertRowColumns(r, 'daily_check_ins');
     const id = readRequiredString(r.id, 'id');
     assertUniqueId(ids, id, 'daily_check_ins');
     const localDate = readRequiredString(r.local_date, 'local_date');
-    if (!LOCAL_DATE_RE.test(localDate)) {
+    if (!isLocalDate(localDate)) {
       throw new BackupValidationError('Некорректная дата дневной отметки.');
     }
     if (dates.has(localDate)) {
@@ -384,8 +434,18 @@ function validateDailyCheckIns(rows: unknown[]): void {
       );
     }
 
+    if (r.sleep_duration_minutes !== null) {
+      const duration = readRequiredNumber(r.sleep_duration_minutes, 'sleep_duration_minutes');
+      if (!Number.isInteger(duration) || duration < 0 || duration > 24 * 60) {
+        throw new BackupValidationError('Некорректное число: sleep_duration_minutes.');
+      }
+    }
+    assertNullableString(r.notes, 'notes');
+
     readRequiredString(r.created_at, 'created_at');
     readRequiredString(r.updated_at, 'updated_at');
+    assertIso(r.created_at, 'created_at');
+    assertIso(r.updated_at, 'updated_at');
   }
 }
 
@@ -394,6 +454,7 @@ function validateAppSettings(rows: unknown[]): void {
 
   for (const row of rows) {
     const r = asRow(row, 'app_settings');
+    assertRowColumns(r, 'app_settings');
     const key = readRequiredString(r.key, 'key');
     if (keys.has(key)) {
       throw new BackupValidationError('Дублирующийся ключ настроек.');
@@ -401,6 +462,7 @@ function validateAppSettings(rows: unknown[]): void {
     keys.add(key);
     readRequiredString(r.value, 'value');
     readRequiredString(r.updated_at, 'updated_at');
+    assertIso(r.updated_at, 'updated_at');
   }
 }
 
@@ -430,6 +492,45 @@ function assertUniqueId(ids: Set<string>, id: string, context: string): void {
     throw new BackupValidationError(`Дублирующийся идентификатор: ${context}.`);
   }
   ids.add(id);
+}
+
+function assertUniqueLogicalRow(
+  rows: Set<string>,
+  key: string,
+  context: string
+): void {
+  if (rows.has(key)) {
+    throw new BackupValidationError(`Дублирующаяся запись: ${context}.`);
+  }
+  rows.add(key);
+}
+
+function assertRowColumns(
+  row: Record<string, unknown>,
+  table: keyof BackupDataPayload
+): void {
+  assertExactKeys(row, BACKUP_TABLE_COLUMNS[table], table);
+}
+
+function assertExactKeys(
+  value: Record<string, unknown>,
+  expected: readonly string[],
+  context: string
+): void {
+  const expectedSet = new Set(expected);
+  const actual = Object.keys(value);
+  if (
+    actual.length !== expected.length ||
+    actual.some((key) => !expectedSet.has(key))
+  ) {
+    throw new BackupValidationError(`Некорректные поля: ${context}.`);
+  }
+}
+
+function assertNullableString(value: unknown, field: string): void {
+  if (value !== null && typeof value !== 'string') {
+    throw new BackupValidationError(`Некорректное поле: ${field}.`);
+  }
 }
 
 function assertFk(
@@ -469,4 +570,15 @@ function isIsoTimestamp(value: string): boolean {
     return false;
   }
   return !Number.isNaN(Date.parse(value));
+}
+
+function isLocalDate(value: string): boolean {
+  if (!LOCAL_DATE_RE.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+  );
 }

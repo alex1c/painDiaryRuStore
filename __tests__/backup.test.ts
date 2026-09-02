@@ -206,6 +206,29 @@ describe('backup validation', () => {
       /Дублирующийся/
     );
   });
+
+  test('rejects unknown or missing row columns before restore', async () => {
+    const db = await openTestDb();
+    seedPopulatedDb(db);
+    const raw = JSON.parse(buildValidBackup(db)) as BackupFile;
+    (raw.data.headache_episodes[0] as Record<string, unknown>).injected_column = 'x';
+
+    expect(() => parseAndValidateBackup(JSON.stringify(raw))).toThrow(
+      /Некорректные поля/
+    );
+  });
+
+  test('preserves safe unknown medication effects for forward compatibility', async () => {
+    const db = await openTestDb();
+    seedPopulatedDb(db);
+    const raw = JSON.parse(buildValidBackup(db)) as BackupFile;
+    const intake = raw.data.medication_intakes[0] as Record<string, unknown>;
+    intake.effect = 'future_safe_effect';
+    intake.effect_rated_at = '2024-06-03T09:00:00.000Z';
+
+    expect(parseAndValidateBackup(JSON.stringify(raw)).file.data.medication_intakes[0].effect)
+      .toBe('future_safe_effect');
+  });
 });
 
 describe('backup restore', () => {
@@ -223,6 +246,9 @@ describe('backup restore', () => {
     const headaches = new HeadacheRepository(target);
     expect(headaches.listEpisodes().length).toBeGreaterThan(0);
     expect(headaches.getActiveEpisode()).not.toBeNull();
+    expect(new BackupRepository(target).exportAllTables()).toEqual(
+      new BackupRepository(source).exportAllTables()
+    );
   });
 
   test('N restore replaces existing data', async () => {
@@ -258,7 +284,7 @@ describe('backup restore', () => {
       intensity: 2,
       startedAt: '2025-02-01T10:00:00.000Z',
     });
-    const beforeCount = new HeadacheRepository(target).listEpisodes().length;
+    const before = new BackupRepository(target).exportAllTables();
 
     let insertCount = 0;
     const originalRun = target.run.bind(target);
@@ -276,7 +302,25 @@ describe('backup restore', () => {
       new BackupService(target).restoreValidatedBackup(validated)
     ).toThrow();
 
-    expect(new HeadacheRepository(target).listEpisodes()).toHaveLength(beforeCount);
+    expect(new BackupRepository(target).exportAllTables()).toEqual(before);
+  });
+
+  test('restored text IDs do not collide with newly created records', async () => {
+    const source = await openTestDb();
+    seedPopulatedDb(source);
+    const validated = new BackupService(source).validateBackupText(
+      new BackupService(source).serializeBackup(new BackupService(source).createBackupPayload())
+    );
+    const target = await openTestDb();
+    new BackupService(target).restoreValidatedBackup(validated);
+    const restoredIds = new Set(
+      new BackupRepository(target).exportAllTables().headache_episodes.map((row) => row.id)
+    );
+    const created = new HeadacheRepository(target).createEpisode({
+      startedAt: '2024-07-01T10:00:00.000Z',
+      endedAt: '2024-07-01T11:00:00.000Z',
+    });
+    expect(restoredIds.has(created.id)).toBe(false);
   });
 
   test('P restored analytics semantics stay consistent', async () => {
