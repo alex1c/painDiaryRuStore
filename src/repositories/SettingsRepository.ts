@@ -64,27 +64,40 @@ export class SettingsRepository {
    * Persists all AppSettings fields as individual key-value rows (upsert).
    */
   saveSettings(settings: AppSettings): void {
-    const now = nowIsoUtc();
-
     try {
       this.db.withTransaction(() => {
-        this.upsert(KEYS.settingsVersion, String(settings.settingsVersion), now);
-        this.upsert(KEYS.themePreference, settings.themePreference, now);
-        this.upsert(
-          KEYS.onboardingCompleted,
-          settings.onboardingCompleted ? '1' : '0',
-          now
-        );
-        this.upsert(
-          KEYS.remindersEnabled,
-          settings.remindersEnabled ? '1' : '0',
-          now
-        );
+        this.writeSettings(settings);
       });
     } catch (err) {
       if (err instanceof StorageError) throw err;
       throw new StorageError('Failed to save app settings', err);
     }
+  }
+
+  /**
+   * Writes settings rows without opening a transaction.
+   * Use when already inside db.withTransaction (e.g. delete-all).
+   */
+  writeSettings(settings: AppSettings): void {
+    const now = nowIsoUtc();
+
+    this.upsert(KEYS.settingsVersion, String(settings.settingsVersion), now);
+    this.upsert(KEYS.themePreference, settings.themePreference, now);
+    this.upsert(
+      KEYS.onboardingCompleted,
+      settings.onboardingCompleted ? '1' : '0',
+      now
+    );
+    this.upsert(
+      KEYS.remindersEnabled,
+      settings.remindersEnabled ? '1' : '0',
+      now
+    );
+  }
+
+  /** Resets stored settings to defaults inside an existing transaction. */
+  writeDefaults(): void {
+    this.writeSettings(DEFAULT_APP_SETTINGS);
   }
 
   private upsert(key: string, value: string, updatedAt: string): void {

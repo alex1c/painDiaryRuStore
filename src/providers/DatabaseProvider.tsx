@@ -5,6 +5,7 @@
 
 import React, {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -34,6 +35,9 @@ export type DatabaseContextValue = {
   dailyCheckInRepository: DailyCheckInRepository | null;
   analyticsRepository: AnalyticsRepository | null;
   settingsRepository: SettingsRepository | null;
+  /** Increments after restore/delete so tabs can reload stale lists. */
+  dataRevision: number;
+  notifyDataChanged: () => void;
 };
 
 const DatabaseContext = createContext<DatabaseContextValue | null>(null);
@@ -49,6 +53,11 @@ type Props = {
 export function DatabaseProvider({ children }: Props) {
   const [db, setDb] = useState<SqlDatabase | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [dataRevision, setDataRevision] = useState(0);
+
+  const notifyDataChanged = useCallback(() => {
+    setDataRevision((value) => value + 1);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -91,6 +100,8 @@ export function DatabaseProvider({ children }: Props) {
         dailyCheckInRepository: null,
         analyticsRepository: null,
         settingsRepository: null,
+        dataRevision: 0,
+        notifyDataChanged,
       };
     }
 
@@ -104,8 +115,10 @@ export function DatabaseProvider({ children }: Props) {
       dailyCheckInRepository: new DailyCheckInRepository(db),
       analyticsRepository: new AnalyticsRepository(db),
       settingsRepository: new SettingsRepository(db),
+      dataRevision,
+      notifyDataChanged,
     };
-  }, [db, error]);
+  }, [db, error, dataRevision, notifyDataChanged]);
 
   return (
     <DatabaseContext.Provider value={value}>{children}</DatabaseContext.Provider>

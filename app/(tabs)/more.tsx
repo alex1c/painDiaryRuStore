@@ -1,69 +1,71 @@
 /**
- * More / settings tab — medications catalog and static safety disclaimer.
+ * More / settings tab — organized sections for data, app, and destructive actions.
  */
 
-import { useRouter } from 'expo-router';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-
 import { Screen } from '@/components/ui/Screen';
-import { Card } from '@/components/ui/Card';
-import { colors, radii, spacing, typography } from '@/src/theme/tokens';
+import { MoreLinkRow } from '@/components/settings/MoreLinkRow';
+import { MoreSectionHeader } from '@/components/settings/MoreSectionHeader';
+import { StyleSheet, Text } from 'react-native';
+import { colors, spacing, typography } from '@/src/theme/tokens';
 
 export default function MoreScreen() {
-  const router = useRouter();
-
   return (
     <Screen scroll>
       <Text style={styles.title}>Ещё</Text>
-      <Text style={styles.subtitle}>Настройки и сведения</Text>
+      <Text style={styles.subtitle}>Данные, настройки и сведения</Text>
 
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Отчёт врачу"
-        onPress={() => router.push('/doctor-report')}
-        style={({ pressed }) => [
-          styles.linkRow,
-          pressed ? styles.pressed : null,
-        ]}
-      >
-        <View>
-          <Text style={styles.linkTitle}>Отчёт врачу</Text>
-          <Text style={styles.linkHint}>
-            PDF-сводка приступов для консультации
-          </Text>
-        </View>
-        <Text style={styles.chevron}>›</Text>
-      </Pressable>
+      <MoreLinkRow
+        title="Отчёт врачу"
+        hint="PDF-сводка приступов для консультации"
+        href="/doctor-report"
+      />
+      <MoreLinkRow
+        title="Мои лекарства"
+        hint="Сохранённые лекарства для быстрого приёма"
+        href="/medications"
+      />
 
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Мои лекарства"
-        onPress={() => router.push('/medications')}
-        style={({ pressed }) => [
-          styles.linkRow,
-          pressed ? styles.pressed : null,
-        ]}
-      >
-        <View>
-          <Text style={styles.linkTitle}>Мои лекарства</Text>
-          <Text style={styles.linkHint}>
-            Сохранённые лекарства для быстрого приёма
-          </Text>
-        </View>
-        <Text style={styles.chevron}>›</Text>
-      </Pressable>
+      <MoreSectionHeader title="Данные" />
+      <MoreLinkRow
+        title="Резервная копия"
+        hint="Сохранить все записи в JSON-файл"
+        href="/backup"
+      />
+      <MoreLinkRow
+        title="Восстановить из копии"
+        hint="Заменить текущие данные из файла"
+        href="/restore"
+      />
+      <MoreLinkRow
+        title="Экспорт CSV"
+        hint="Таблицы для Excel и других программ"
+        href="/export-csv"
+      />
 
-      <Card style={styles.card}>
-        <Text style={styles.body}>
-          Тема и напоминания появятся здесь позже. Данные хранятся только
-          на устройстве (локальный SQLite).
-        </Text>
-      </Card>
-      <Card style={styles.card}>
-        <Text style={styles.body}>
-          Приложение не ставит диагноз и не заменяет консультацию врача.
-        </Text>
-      </Card>
+      <MoreSectionHeader title="Приложение" />
+      <MoreLinkRow
+        title="Настройки"
+        hint="Параметры приложения"
+        href="/settings"
+      />
+      <MoreLinkRow
+        title="О приложении"
+        hint="Версия и назначение"
+        href="/about"
+      />
+      <MoreLinkRow
+        title="Конфиденциальность"
+        hint="Как хранятся ваши данные"
+        href="/privacy"
+      />
+
+      <MoreSectionHeader title="Опасная зона" />
+      <MoreLinkRow
+        title="Удалить все данные"
+        hint="Безвозвратно очистить дневник на устройстве"
+        href="/delete-data"
+        danger
+      />
     </Screen>
   );
 }
@@ -78,41 +80,5 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: spacing.xs,
     marginBottom: spacing.md,
-  },
-  linkRow: {
-    minHeight: 56,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.md,
-    backgroundColor: colors.surface,
-    padding: spacing.md,
-    marginBottom: spacing.md,
-  },
-  linkTitle: {
-    ...typography.subtitle,
-    color: colors.text,
-  },
-  linkHint: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-  },
-  chevron: {
-    ...typography.title,
-    color: colors.textMuted,
-    marginLeft: spacing.sm,
-  },
-  card: {
-    marginBottom: spacing.md,
-  },
-  body: {
-    ...typography.body,
-    color: colors.textSecondary,
-  },
-  pressed: {
-    opacity: 0.85,
   },
 });

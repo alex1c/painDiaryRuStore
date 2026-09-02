@@ -26,7 +26,7 @@ function formatDiaryDayHeading(localDate: string): string {
 
 export default function DiaryScreen() {
   const router = useRouter();
-  const { ready, dailyCheckInRepository } = useDatabase();
+  const { ready, dailyCheckInRepository, dataRevision } = useDatabase();
   const [checkIns, setCheckIns] = useState<DailyCheckIn[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -41,10 +41,12 @@ export default function DiaryScreen() {
     setLoading(false);
   }, [ready, dailyCheckInRepository]);
 
+  // dataRevision retriggers reload after backup restore or delete-all.
   useFocusEffect(
     useCallback(() => {
       load();
-    }, [load])
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional refresh token
+    }, [load, dataRevision])
   );
 
   return (

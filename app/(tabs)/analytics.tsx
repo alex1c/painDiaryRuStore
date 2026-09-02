@@ -26,7 +26,7 @@ import { formatDurationMs } from '@/src/utils/formatDuration';
 import { toLocalDateString } from '@/src/utils/localDate';
 
 export default function AnalyticsScreen() {
-  const { ready, analyticsRepository } = useDatabase();
+  const { ready, analyticsRepository, dataRevision } = useDatabase();
   const [period, setPeriod] = useState<AnalyticsPeriod>(DEFAULT_ANALYTICS_PERIOD);
   const [report, setReport] = useState<AnalyticsReport | null>(null);
   const [loading, setLoading] = useState(true);
@@ -44,10 +44,12 @@ export default function AnalyticsScreen() {
     setLoading(false);
   }, [ready, analyticsRepository, period]);
 
+  // dataRevision retriggers reload after backup restore or delete-all.
   useFocusEffect(
     useCallback(() => {
       load();
-    }, [load])
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional refresh token
+    }, [load, dataRevision])
   );
 
   return (

@@ -94,6 +94,22 @@ function RootLayoutNav() {
             name="doctor-report"
             options={{ title: 'Отчёт врачу' }}
           />
+          <Stack.Screen name="backup" options={{ title: 'Резервная копия' }} />
+          <Stack.Screen
+            name="restore"
+            options={{ title: 'Восстановить из копии' }}
+          />
+          <Stack.Screen name="export-csv" options={{ title: 'Экспорт CSV' }} />
+          <Stack.Screen name="settings" options={{ title: 'Настройки' }} />
+          <Stack.Screen
+            name="privacy"
+            options={{ title: 'Конфиденциальность' }}
+          />
+          <Stack.Screen name="about" options={{ title: 'О приложении' }} />
+          <Stack.Screen
+            name="delete-data"
+            options={{ title: 'Удалить все данные' }}
+          />
         </Stack>
       </ThemeProvider>
     </DatabaseProvider>

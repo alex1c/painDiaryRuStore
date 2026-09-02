@@ -15,7 +15,7 @@ import { colors, radii, spacing, typography } from '@/src/theme/tokens';
 
 export default function MedicationsScreen() {
   const router = useRouter();
-  const { medicationRepository } = useDatabase();
+  const { medicationRepository, dataRevision } = useDatabase();
   const [active, setActive] = useState<Medication[]>([]);
   const [archived, setArchived] = useState<Medication[]>([]);
 
@@ -29,10 +29,12 @@ export default function MedicationsScreen() {
     );
   }, [medicationRepository]);
 
+  // dataRevision retriggers reload after backup restore or delete-all.
   useFocusEffect(
     useCallback(() => {
       reload();
-    }, [reload])
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional refresh token
+    }, [reload, dataRevision])
   );
 
   return (

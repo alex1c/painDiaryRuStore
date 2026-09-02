@@ -57,7 +57,7 @@ type LoadState =
 
 export default function TodayScreen() {
   const router = useRouter();
-  const { ready, error: dbError, headacheRepository, medicationRepository, dailyCheckInRepository } =
+  const { ready, error: dbError, headacheRepository, medicationRepository, dailyCheckInRepository, dataRevision } =
     useDatabase();
   const [state, setState] = useState<LoadState>({ status: 'loading' });
 
@@ -116,10 +116,12 @@ export default function TodayScreen() {
     }
   }, [ready, headacheRepository, medicationRepository, dailyCheckInRepository]);
 
+  // dataRevision retriggers reload after backup restore or delete-all.
   useFocusEffect(
     useCallback(() => {
       load();
-    }, [load])
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional refresh token
+    }, [load, dataRevision])
   );
 
   // Revalidate when returning from background; refresh duration ~ once per minute.
