@@ -11,6 +11,7 @@ import { createSqlJsAdapter } from '@/src/db/sqlJsAdapter';
 import type { SqlDatabase } from '@/src/db/types';
 import { HeadacheRepository } from '@/src/repositories/HeadacheRepository';
 import { MedicationRepository } from '@/src/repositories/MedicationRepository';
+import { CustomFactorRepository } from '@/src/repositories/CustomFactorRepository';
 import { buildDoctorReport } from '@/src/reports/buildDoctorReport';
 import { DoctorReportRepository } from '@/src/reports/DoctorReportRepository';
 import { escapeHtml } from '@/src/reports/escapeHtml';
@@ -100,6 +101,51 @@ describe('doctor report HTML escaping', () => {
       expect(html).toContain('&lt;b&gt;опасно&lt;/b&gt; &amp; &quot;цитата&quot;');
       expect(html).not.toContain('<b>опасно</b>');
     });
+  });
+
+  test('hostile values in medication, dose, note, and custom factor are escaped once', async () => {
+    const db = await openTestDb();
+    const headaches = new HeadacheRepository(db);
+    const medications = new MedicationRepository(db);
+    const factors = new CustomFactorRepository(db);
+    const analytics = new AnalyticsRepository(db);
+    const reports = new DoctorReportRepository(db);
+    const episodeId = seedCompletedEpisode(
+      headaches,
+      '2024-06-10T10:00:00.000Z',
+      '2024-06-10T12:00:00.000Z',
+      6
+    );
+    headaches.updateEpisode(episodeId, {
+      notes: '<img src=x onerror=alert(1)>',
+    });
+    const factor = factors.getOrCreate('"Стресс" <test>');
+    headaches.setFactors(episodeId, [{
+      code: 'custom',
+      customFactorId: factor.id,
+      customLabel: factor.name,
+    }]);
+    const medication = medications.createMedication({ name: '<script>med</script>' });
+    medications.createIntake({
+      episodeId,
+      medicationId: medication.id,
+      takenAt: '2024-06-10T11:00:00.000Z',
+      dose: '400 & 600',
+      unit: 'мг',
+    });
+
+    const html = renderDoctorReportHtml(buildDoctorReport(analytics, reports, {
+      preset: '30d',
+      todayLocal: '2024-06-30',
+    }));
+
+    expect(html).not.toContain('<script>med</script>');
+    expect(html).not.toContain('<img src=x onerror=alert(1)>');
+    expect(html).toContain('&lt;script&gt;med&lt;/script&gt;');
+    expect(html).toContain('400 &amp; 600');
+    expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;');
+    expect(html).toContain('&quot;Стресс&quot; &lt;test&gt;');
+    expect(html).not.toContain('&amp;lt;script');
   });
 });
 
@@ -213,15 +259,7 @@ describe('doctor report data', () => {
     });
     const analyticsReport = analytics.buildReport('30d', '2024-06-30');
 
-    expect(report.analytics.overview.episodeCount).toBe(
-      analyticsReport.overview.episodeCount
-    );
-    expect(report.analytics.overview.headacheDayCount).toBe(
-      analyticsReport.overview.headacheDayCount
-    );
-    expect(report.analytics.overview.averageIntensity).toBe(
-      analyticsReport.overview.averageIntensity
-    );
+    expect(report.analytics).toEqual(analyticsReport);
   });
 
   test('multiple episodes on same headache day dedupe headache days', async () => {
@@ -279,6 +317,53 @@ describe('doctor report data', () => {
     });
 
     expect(report.preview.episodeCount).toBe(1);
+  });
+
+  test('episode inclusion uses the half-open local start-date boundary', async () => {
+    const db = await openTestDb();
+    const headaches = new HeadacheRepository(db);
+    const analytics = new AnalyticsRepository(db);
+    const reports = new DoctorReportRepository(db);
+    const start = new Date(2024, 5, 10).toISOString();
+    const nextDay = new Date(2024, 5, 11).toISOString();
+    const before = new Date(new Date(start).getTime() - 60_000).toISOString();
+    seedCompletedEpisode(headaches, before, new Date(new Date(start).getTime() + 60_000).toISOString(), 4);
+    seedCompletedEpisode(headaches, start, new Date(new Date(start).getTime() + 60_000).toISOString(), 5);
+    seedCompletedEpisode(headaches, nextDay, new Date(new Date(nextDay).getTime() + 60_000).toISOString(), 6);
+
+    const report = buildDoctorReport(analytics, reports, {
+      preset: 'custom',
+      todayLocal: '2024-06-30',
+      customFrom: '2024-06-10',
+      customTo: '2024-06-10',
+    });
+
+    expect(report.preview.episodeCount).toBe(1);
+    expect(report.episodes[0].startedAt).toBe(start);
+  });
+
+  test('historical factor, medication name, dose, and unknown effect remain safe', async () => {
+    const db = await openTestDb();
+    const headaches = new HeadacheRepository(db);
+    const medications = new MedicationRepository(db);
+    const factors = new CustomFactorRepository(db);
+    const analytics = new AnalyticsRepository(db);
+    const reports = new DoctorReportRepository(db);
+    const episodeId = seedCompletedEpisode(headaches, '2024-06-10T10:00:00.000Z', '2024-06-10T12:00:00.000Z', 6);
+    const factor = factors.getOrCreate('Старый фактор');
+    headaches.setFactors(episodeId, [{ code: 'custom', customFactorId: factor.id, customLabel: factor.name }]);
+    const medication = medications.createMedication({ name: 'Ибупрофен', defaultDose: '200 мг' });
+    const intake = medications.createIntake({ episodeId, medicationId: medication.id, takenAt: '2024-06-10T11:00:00.000Z', dose: '400', unit: 'мг' });
+    db.run('UPDATE custom_factors SET name = ? WHERE id = ?', ['Новый фактор', factor.id]);
+    db.run('UPDATE medications SET name = ?, default_dose = ? WHERE id = ?', ['Ибупрофен тест', '200', medication.id]);
+    db.run('UPDATE medication_intakes SET effect = ? WHERE id = ?', ['future_effect', intake.id]);
+
+    const report = buildDoctorReport(analytics, reports, { preset: '30d', todayLocal: '2024-06-30' });
+
+    expect(report.episodes[0].factorLabels).toEqual(['Старый фактор']);
+    expect(report.episodes[0].medications[0]).toMatchObject({ name: 'Ибупрофен', doseLabel: '400 мг' });
+    expect(report.episodes[0].medications[0].effectLabel).not.toBeUndefined();
+    expect(report.analytics.medications[0]).toMatchObject({ intakeCount: 1, unrated: 1 });
   });
 
   test('long Russian labels render without breaking HTML structure', async () => {

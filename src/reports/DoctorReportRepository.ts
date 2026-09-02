@@ -107,7 +107,7 @@ export class DoctorReportRepository {
           factorDisplayLabel(
             tag.code as import('@/src/domain/codes').FactorCode,
             tag.code === 'custom'
-              ? tag.factor_name ?? tag.custom_label
+              ? tag.custom_label ?? tag.factor_name
               : tag.custom_label
           )
         ),
@@ -254,8 +254,8 @@ function mapEpisodeMedication(row: IntakeRow): DoctorReportEpisodeMedication {
   return {
     name: row.medication_name_snapshot?.trim() || 'Без названия',
     doseLabel: medicationDoseLabel(row.dose, row.unit),
-    effectLabel: effect
-      ? MEDICATION_EFFECT_LABELS[effect]
-      : MEDICATION_EFFECT_UNRATED_LABEL,
+    effectLabel:
+      (effect ? MEDICATION_EFFECT_LABELS[effect] : null) ??
+      MEDICATION_EFFECT_UNRATED_LABEL,
   };
 }

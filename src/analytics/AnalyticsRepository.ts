@@ -283,7 +283,7 @@ export class AnalyticsRepository {
       key: `${row.code}:${row.custom_label ?? ''}:${row.factor_name ?? ''}`,
       label: formatFactorRankLabel(
         row.code,
-        row.code === 'custom' ? row.factor_name ?? row.custom_label : row.custom_label
+        row.code === 'custom' ? row.custom_label ?? row.factor_name : row.custom_label
       ),
       episodeCount: row.episode_count,
     }));

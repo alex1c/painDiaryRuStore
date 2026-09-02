@@ -112,6 +112,10 @@ const REPORT_CSS = `
   .episode-date { font-weight: 700; font-size: 12pt; margin-bottom: 4pt; }
   .episode-line { margin-bottom: 4pt; }
   .episode-label { color: #555; }
+  .episode-line, .med-block, td, li {
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+  }
 `;
 
 function renderHeader(report: DoctorReport): string {
